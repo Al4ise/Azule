@@ -1,0 +1,91 @@
+#!/bin/zsh
+
+# DATA
+echo "Project Name:"
+read tweakname
+
+echo "IPA Directory:"
+read ipadir
+
+echo "Output Directory:"
+read outdir
+
+echo "Tweak BundleID's (required):"
+read twk
+tweakids=("$twk")
+
+echo "DYLIBs to Inject:"
+read dlb
+dylibnames=("$dlb")
+
+# MAKE .TMP
+dir=$AZULE/Work
+mkdir -p "$dir"/DEBS
+mkdir -p "$dir"/JSONS
+
+# FETCH TWEAK JSONS, DEBS AND DECLARE $TWEAKNAME
+num=0
+for i in "${tweakids[@]}"
+do
+
+# GET TWEAK JSONS
+if [ ! -f "$dir"/JSONS/"$i".json ]
+then
+curl -s -o "$dir"/JSONS/"$i".json https://api.parcility.co/db/package/"$i"
+fi
+
+# GET TWEAK DEBS
+if [ ! -f "$dir"/DEBS/"$i".deb ]
+then
+curl -s -o "$dir"/DEBS/"$i".deb "$(jq -r '.data.repo.url' "$dir"/JSONS/"$i".json)$(jq -r '.data.builds[].Filename' "$dir"/JSONS/"$i".json)"
+fi
+
+# DECLARE $TWEAKNAME
+if [ -z "$tweakname" ]
+then
+if [ "$num" != "0" ]
+then
+tweakname+="+"
+fi
+tweakname+="$i"
+fi
+num+=1
+done
+
+# MAKE .TMP/$TWEAKNAME
+mkdir -p "$dir"/"$tweakname"
+cd "$dir"/"$tweakname"
+
+# EXTRACT DEBS
+for i in "${tweakids[@]}"
+do
+dpkg -x "$dir"/DEBS/"$i".deb .
+done
+
+# PREPARE IPA
+unzip -q "$ipadir" -d "$dir"/"$tweakname"
+
+# PREPARE BUNDLES
+find -E "$dir"/"$tweakname"/Library/Application\ Support -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
+
+# PREPARE SUBSTRATE
+rsync -a $AZULE/CydiaSubstrate.framework Payload/*.app/Frameworks
+
+# PREPARE AND INJECT DYLIBS
+executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
+for i in "${dylibnames[@]}"
+do
+codesign --remove-signature 'Library/MobileSubstrate/DynamicLibraries/'$i''
+rsync -a 'Library/MobileSubstrate/DynamicLibraries/'$i'' Payload/*.app/Frameworks
+install_name_tool -change /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate @rpath/CydiaSubstrate.framework/CydiaSubstrate Payload/*.app/Frameworks/"$i"
+$AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
+done
+
+# PATCH INFO.PLIST
+plutil -remove UISupportedDevices "$dir"/"$tweakname"/Payload/*.app/Info.plist
+
+# GENERATE IPA
+zip -r -q -X $outdir/$tweakname.ipa Payload
+
+# CLEANUP
+rm -rf "$dir"
