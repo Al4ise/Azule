@@ -8,8 +8,15 @@ chmod +x insert_dylib
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]
 then
-ln -s install.sh /usr/local/bin/update-azule
+ln -s $AZULE/install /usr/local/bin/update-azule
 chmod +x /usr/local/bin/update-azule
+fi
+
+# AZULE GLOBAL COMMAND
+if [ ! -f /usr/local/bin/azule ]
+then
+ln -s $AZULE/azule /usr/local/bin/azule
+chmod +x /usr/local/bin/azule
 fi
 
 # REMOVE OLD SUBSTRATE
@@ -24,9 +31,8 @@ curl -s -o api.json 'https://api.parcility.co/db/package/mobilesubstrate/saurik'
 curl -s -Lo substrate.deb "$(jq -r '.data.repo.url' api.json)$(jq -r '.data.builds[-1].Filename' api.json)"
 ar -x substrate.deb data.tar.lzma
 tar -C $AZULE --lzma --strip-components 3 -xf data.tar.lzma ./Library/Frameworks/CydiaSubstrate.framework
+plutil -convert binary1 "$AZULE/CydiaSubstrate.framework/Info.plist" || true
 rm -rf "$AZULE/CydiaSubstrate.framework/Libraries" "$AZULE/CydiaSubstrate.framework/Commands"
 
 # CLEANUP
 rm -rf $AZULE/.tmp
-
-## INIT-AZULE GLOBAL COMMAND
