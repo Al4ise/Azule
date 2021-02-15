@@ -7,9 +7,6 @@ read tweakname
 echo "IPA Directory:"
 read ipadir
 
-echo "Output Directory:"
-read outdir
-
 echo "Tweak BundleID's (required):"
 read twk
 tweakids=("$twk")
@@ -85,7 +82,7 @@ done
 plutil -remove UISupportedDevices "$dir"/"$tweakname"/Payload/*.app/Info.plist
 
 # GENERATE IPA
-zip -r -q -X $outdir/$tweakname.ipa Payload
+zip -r -q -X $AZULE/Packages/$tweakname.ipa Payload
 
 # CLEANUP
 rm -rf "$dir"
