@@ -2,16 +2,16 @@
 
 Installation:
 
-echo "export AZULE=~/azule" >> ~/.zprofile
+'echo "export AZULE=~/azule" >> ~/.zprofile'
 
-git clone --recursive https://github.com/Al4ise/Azule $AZULE
+'git clone --recursive https://github.com/Al4ise/Azule $AZULE'
 
-chmod +x $AZULE/install
+'chmod +x $AZULE/install'
 
-$AZULE/install
+'$AZULE/install'
 
 Usage:
-Run azule in a Terminal window
+Run 'azule' in a Terminal window
 
 Updating:
-Run update-azule in a Terminal window
+Run 'update-azule' in a Terminal window
