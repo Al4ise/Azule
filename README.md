@@ -1,17 +1,22 @@
 # Azule
 
-Installation:
-
+## Installation
+```zsh
 echo "export AZULE=~/azule" >> ~/.zprofile
-
 git clone --recursive https://github.com/Al4ise/Azule $AZULE
-
 chmod +x $AZULE/install
-
 $AZULE/install
+```
 
-Usage:
-Run 'azule' in a Terminal window
+## Usage
+```
+azule
+```
 
-Updating:
-Run 'update-azule' in a Terminal window
+## Updating
+```
+update-azule
+```
+
+## License
+[GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
