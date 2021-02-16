@@ -29,36 +29,28 @@ unzip -q "$ipadir" -d "$dir"/"$tweakname"
 # read outdir
 
 # GET DEBS
-echo "Tweak BundleID's OR DEB Directory (required):"
+echo "Tweaks(BundleID's or DEB Directories) (required):"
 twk=()
 vared twk
 tweakids=( $twk )
-##FOR EVERY IN TWEAKIDS
-if [ -f "${tweakids[1]}" ]
-then
 for i in "${tweakids[@]}"
 do
+if [ -f "$i" ]
+then
 rsync -a "$i" "$dir"/DEBS
-done
+dpkg -x "$dir"/DEBS/$(basename "$i") .
 
 else
 
 # FETCH TWEAK JSONS AND DEBS
-for i in "${tweakids[@]}"
-do
 
 # GET TWEAK JSONS
 curl -s -o "$dir"/JSONS/"$i".json https://api.parcility.co/db/package/"$i"
 
 # GET TWEAK DEBS FROM PARCILITY
 curl -s -o "$dir/DEBS/$i.deb" "$(jq -r '.data.repo.url' "$dir"/JSONS/"$i".json)$(jq -r '.data.builds[].Filename' "$dir"/JSONS/"$i".json)"
-done
-fi
-
-# EXTRACT DEBS
-for i in "${tweakids[@]}"
-do
 dpkg -x "$dir"/DEBS/"$i".deb .
+fi
 done
 
 echo "DYLIBs to Inject (required):"
