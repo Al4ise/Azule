@@ -6,6 +6,7 @@ git pull
 chmod +x insert_dylib
 chmod +x azule
 chmod +x Install
+chmod +x Uninstall
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]
