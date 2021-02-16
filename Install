@@ -4,19 +4,19 @@ mkdir -p ~/azule/.tmp
 cd $AZULE
 git pull
 chmod +x insert_dylib
+chmod +x azule
+chmod +x Install
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]
 then
 ln -s $AZULE/install /usr/local/bin/update-azule
-chmod +x /usr/local/bin/update-azule
 fi
 
 # AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/azule ]
 then
 ln -s $AZULE/azule /usr/local/bin/azule
-chmod +x /usr/local/bin/azule
 fi
 
 # REMOVE OLD SUBSTRATE
