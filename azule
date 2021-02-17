@@ -61,17 +61,42 @@ dylibnames=( $dlb )
 # PREPARE BUNDLES
 find -E "$dir"/"$tweakname"/Library/Application\ Support -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
 
-# PREPARE SUBSTRATE
-rsync -a $AZULE/CydiaSubstrate.framework Payload/*.app/Frameworks
-
-# PREPARE AND INJECT DYLIBS
+# INJECT DYLIBS
 executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
+
 for i in "${dylibnames[@]}"
 do
-codesign --remove-signature 'Library/MobileSubstrate/DynamicLibraries/'$i''
-rsync -a 'Library/MobileSubstrate/DynamicLibraries/'$i'' Payload/*.app/Frameworks
-install_name_tool -change /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate @rpath/CydiaSubstrate.framework/CydiaSubstrate Payload/*.app/Frameworks/"$i"
+find -E "$dir"/"$tweakname" -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
 $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
+done
+
+# IMPORT FRAMEWORKS
+import_frameworks_in+=( $dylibnames )
+frameworks=( $(find -E "$dir"/"$tweakname" -iname '*.framework' ! -iregex '.*\.(app)/.+') $AZULE/CydiaSubstrate.framework )
+
+for i in "${frameworks[@]}"
+do
+rsync -a "$i" Payload/*.app/Frameworks
+frxd="$(basename "$i")/"$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)""
+import_frameworks_in+=( $frxd )
+done
+
+for i in "${import_frameworks_in[@]}"
+do
+codesign --remove-signature Payload/*.app/Frameworks/"$i"
+links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
+for u in "${links[@]}"
+do
+
+for x in "${import_frameworks_in[@]}"
+do
+if [[ "$u" =~ "$x" ]]
+then
+install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
+fi
+
+done
+done
 done
 
 # PATCH INFO.PLIST
