@@ -87,14 +87,15 @@ codesign --remove-signature Payload/*.app/Frameworks/"$i"
 links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
 for u in "${links[@]}"
 do
-if [[ "$u" =~ "$i" ]]
+
+for x in "${import_frameworks_in[@]}"
+do
+if [[ "$u" =~ "$x" ]]
 then
-
-### NOT WORKING FOR WHATEVER REASON
-install_name_tool -change '$u' @rpath/$i Payload/*.app/Frameworks/"$i"
----
-
+install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
 fi
+
+done
 done
 done
 
