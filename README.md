@@ -23,4 +23,4 @@ update-azule
 
 ## Credits
 
-*[kabiroberai](https://github.com/kabiroberai/theos-jailed)
+* [kabiroberai](https://github.com/kabiroberai/theos-jailed)
