@@ -18,9 +18,9 @@ azule
 update-azule
 ```
 
-## License
-[GPL 3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
-
 ## Credits
 
-* [kabiroberai](https://github.com/kabiroberai/theos-jailed) for the idea of jailed tweaks
+* [Kabir Oberai](https://github.com/kabiroberai/theos-jailed) -  Idea of jailed tweaks
+
+## License
+[GPL 3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
