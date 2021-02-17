@@ -8,6 +8,7 @@ mkdir -p "$dir"/JSONS
 # DECLARE $TWEAKNAME
 echo "Project Name:"
 read tweakname
+
 if [ -z "$tweakname" ]
 then
 tweakname="package"
@@ -28,11 +29,11 @@ unzip -q "$ipadir" -d "$dir"/"$tweakname"
 # echo "Output Directory:"
 # read outdir
 
-# GET DEBS
-echo "Tweaks(BundleID's or DEB Directories) (required):"
-twk=()
-vared twk
-tweakids=( $twk )
+# GET FILES
+echo "Tweaks (BundleID's or DEB Directories) (required):"
+tweakids=()
+vared tweakids
+
 for i in "${tweakids[@]}"
 do
 if [ -f "$i" ]
@@ -42,21 +43,17 @@ dpkg -x "$dir"/DEBS/$(basename "$i") .
 
 else
 
-# FETCH TWEAK JSONS AND DEBS
-
-# GET TWEAK JSONS
+# GET TWEAK DEBS FROM PARCILITY
 curl -s -o "$dir"/JSONS/"$i".json https://api.parcility.co/db/package/"$i"
 
-# GET TWEAK DEBS FROM PARCILITY
 curl -s -o "$dir/DEBS/$i.deb" "$(jq -r '.data.repo.url' "$dir"/JSONS/"$i".json)$(jq -r '.data.builds[].Filename' "$dir"/JSONS/"$i".json)"
 dpkg -x "$dir"/DEBS/"$i".deb .
 fi
 done
 
 echo "DYLIBs to Inject (required):"
-dlb=()
-vared dlb
-dylibnames=( $dlb )
+dylibnames=()
+vared dylibnames
 
 # PREPARE BUNDLES
 find -E "$dir"/"$tweakname"/Library/Application\ Support -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
@@ -71,24 +68,24 @@ $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
 done
 
 # IMPORT FRAMEWORKS
-import_frameworks_in+=( $dylibnames )
+chain+=( $dylibnames )
 frameworks=( $(find -E "$dir"/"$tweakname" -iname '*.framework' ! -iregex '.*\.(app)/.+') $AZULE/CydiaSubstrate.framework )
 
 for i in "${frameworks[@]}"
 do
 rsync -a "$i" Payload/*.app/Frameworks
 frxd="$(basename "$i")/"$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)""
-import_frameworks_in+=( $frxd )
+chain+=( $frxd )
 done
 
-for i in "${import_frameworks_in[@]}"
+for i in "${chain[@]}"
 do
 codesign --remove-signature Payload/*.app/Frameworks/"$i"
 links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
 for u in "${links[@]}"
 do
 
-for x in "${import_frameworks_in[@]}"
+for x in "${chain[@]}"
 do
 if [[ "$u" =~ "$x" ]]
 then
