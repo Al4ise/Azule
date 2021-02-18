@@ -1,5 +1,8 @@
 #!/bin/zsh
 
+# VARIABLES
+dylibnames=()
+
 # MAKE .TMP
 dir=$AZULE/Work
 mkdir -p "$dir"/DEBS
@@ -15,7 +18,7 @@ tweakname="package"
 fi
 
 # MAKE .TMP/$TWEAKNAME
-mkdir -p "$dir"/"$tweakname"
+mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
 # GET IPA
@@ -30,46 +33,65 @@ unzip -q "$ipadir" -d "$dir"/"$tweakname"
 # read outdir
 
 # GET FILES
-echo "Tweaks (BundleID's or DEB Directories) (required):"
+echo "Files (BundleID's and files of type .deb .bundle .dylib) (required):"
 tweakids=()
 vared tweakids
 
 for i in "${tweakids[@]}"
 do
-if [ -f "$i" ]
-then
+
+case "$i" in
+*.deb)
 rsync -a "$i" "$dir"/DEBS
-dpkg -x "$dir"/DEBS/$(basename "$i") .
+dpkg -x "$dir"/DEBS/$(basename "$i") "$dir"/"$tweakname"/Tweak
+;;
 
-else
+*.dylib)
+rsync -a "$i" "$dir"/"$tweakname"/Tweak
+dylibnames+=( $(basename "$i") )
 
+;;
+*.bundle)
+rsync -a "$i" "$dir"/"$tweakname"/Tweak
+
+;;
+
+*)
+# CHECK IF ITS ON PARCILITY
+curl -s https://api.parcility.co/db/package/"$i" | jq -r '.status'
+if [ "$(curl -s https://api.parcility.co/db/package/"$i" | jq -r '.status')" = "true" ]
+then
 # GET TWEAK DEBS FROM PARCILITY
 curl -s -o "$dir"/JSONS/"$i".json https://api.parcility.co/db/package/"$i"
 
 curl -s -o "$dir/DEBS/$i.deb" "$(jq -r '.data.repo.url' "$dir"/JSONS/"$i".json)$(jq -r '.data.builds[].Filename' "$dir"/JSONS/"$i".json)"
-dpkg -x "$dir"/DEBS/"$i".deb .
+dpkg -x "$dir"/DEBS/"$i".deb "$dir"/"$tweakname"/Tweak
+else
+echo ""$i" isn't Available on Parcility"
 fi
+
+;;
+esac
 done
 
-echo "DYLIBs to Inject (required):"
-dylibnames=()
-vared dylibnames
-
 # PREPARE BUNDLES
-find -E "$dir"/"$tweakname"/Library/Application\ Support -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
+find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
+
+echo "DYLIBs to Inject (required):"
+vared dylibnames
 
 # INJECT DYLIBS
 executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
 for i in "${dylibnames[@]}"
 do
-find -E "$dir"/"$tweakname" -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
+find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
 $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
 done
 
 # IMPORT FRAMEWORKS
 chain+=( $dylibnames )
-frameworks=( $(find -E "$dir"/"$tweakname" -iname '*.framework' ! -iregex '.*\.(app)/.+') $AZULE/CydiaSubstrate.framework )
+frameworks=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.framework') $AZULE/CydiaSubstrate.framework )
 
 for i in "${frameworks[@]}"
 do
