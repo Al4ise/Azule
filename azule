@@ -3,7 +3,6 @@
 # MAKE .TMP
 dir=$AZULE/Work
 mkdir -p "$dir"/DEBS
-mkdir -p "$dir"/JSONS
 
 # DECLARE $TWEAKNAME
 while [ -z "$tweakname" ]
@@ -27,8 +26,8 @@ done
 unzip -q "$ipadir" -d "$dir"/"$tweakname"
 
 # SET OUTPUT DIRECTORY
-# echo "Output Directory:"
-# read outdir
+#echo "Output Directory:"
+#read -r outdir
 
 # GET FILES
 while [ -z "$twk" ]
@@ -65,9 +64,7 @@ rsync -a "$i" "$dir"/"$tweakname"/Tweak
 if [ "$(curl -s https://api.parcility.co/db/package/"$i" | jq -r '.status')" = "true" ]
 then
 
-curl -s -o "$dir"/JSONS/"$i".json https://api.parcility.co/db/package/"$i"
-
-curl -s -o "$dir/DEBS/$i.deb" "$(jq -r '.data.repo.url' "$dir"/JSONS/"$i".json)$(jq -r '.data.builds[].Filename' "$dir"/JSONS/"$i".json)"
+curl -s -Lo "$dir/DEBS/$i.deb" "$(curl -s 'https://api.parcility.co/db/package/"$i"' | jq -r '.data.repo.url + .data.builds[].Filename')"
 dpkg -x "$dir"/DEBS/"$i".deb "$dir"/"$tweakname"/Tweak
 else
 echo ""$i" isn't Available on Parcility"
@@ -78,12 +75,13 @@ esac
 done
 
 # SET DYLIBNAMES
-while [ -z "$dlb" ]
-do    printf 'Dylibs to inject: '
+while
+    printf 'Dylibs to inject: '
     read -r dlb
-    [ -z "$dlb" ] && echo 'Dylibs cannot be empty; try again.'
-done
-dylibnames+=( $(echo $dlb | tr " " "\n") )
+    dylibnames+=( $(echo $dlb | tr " " "\n") )
+    [ -z "$dylibnames" ] && echo 'Dylibs cannot be empty; try again.'
+    [ -z "$dylibnames" ]
+do true; done
 
 # PREPARE BUNDLES
 find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
