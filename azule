@@ -1,29 +1,27 @@
 #!/bin/zsh
 
-# VARIABLES
-dylibnames=()
-
 # MAKE .TMP
 dir=$AZULE/Work
 mkdir -p "$dir"/DEBS
 mkdir -p "$dir"/JSONS
 
 # DECLARE $TWEAKNAME
-echo "Project Name:"
-read tweakname
-
-if [ -z "$tweakname" ]
-then
-tweakname="package"
-fi
+while [ -z "$tweakname" ]
+do    printf 'Project Name: '
+    read -r tweakname
+    [ -z "$tweakname" ] && echo 'Project Name cannot be empty; try again.'
+done
 
 # MAKE .TMP/$TWEAKNAME
 mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
 # GET IPA
-echo "IPA Directory:"
-read ipadir
+while [ -z "$ipadir" ]
+do    printf 'IPA Directory: '
+    read -r ipadir
+    [ -z "$ipadir" ] && echo 'IPA Directory cannot be empty; try again.'
+done
 
 # PREPARE IPA
 unzip -q "$ipadir" -d "$dir"/"$tweakname"
@@ -33,9 +31,12 @@ unzip -q "$ipadir" -d "$dir"/"$tweakname"
 # read outdir
 
 # GET FILES
-echo "Files (BundleID's and files of type .deb .bundle .dylib) (required):"
-tweakids=()
-vared tweakids
+while [ -z "$twk" ]
+do    printf 'Files: '
+    read -r twk
+    [ -z "$twk" ] && echo 'Files cannot be empty; try again.'
+done
+tweakids=( $(echo $twk | tr " " "\n") )
 
 for i in "${tweakids[@]}"
 do
@@ -56,12 +57,14 @@ rsync -a "$i" "$dir"/"$tweakname"/Tweak
 
 ;;
 
-*)
-# CHECK IF ITS ON PARCILITY
-curl -s https://api.parcility.co/db/package/"$i" | jq -r '.status'
+*.framework)
+rsync -a "$i" "$dir"/"$tweakname"/Tweak
+;;
+
+*) #PARCILITY
 if [ "$(curl -s https://api.parcility.co/db/package/"$i" | jq -r '.status')" = "true" ]
 then
-# GET TWEAK DEBS FROM PARCILITY
+
 curl -s -o "$dir"/JSONS/"$i".json https://api.parcility.co/db/package/"$i"
 
 curl -s -o "$dir/DEBS/$i.deb" "$(jq -r '.data.repo.url' "$dir"/JSONS/"$i".json)$(jq -r '.data.builds[].Filename' "$dir"/JSONS/"$i".json)"
@@ -74,11 +77,16 @@ fi
 esac
 done
 
+# SET DYLIBNAMES
+while [ -z "$dlb" ]
+do    printf 'Dylibs to inject: '
+    read -r dlb
+    [ -z "$dlb" ] && echo 'Dylibs cannot be empty; try again.'
+done
+dylibnames+=( $(echo $dlb | tr " " "\n") )
+
 # PREPARE BUNDLES
 find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
-
-echo "DYLIBs to Inject (required):"
-vared dylibnames
 
 # INJECT DYLIBS
 executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
