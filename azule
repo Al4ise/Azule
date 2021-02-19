@@ -1,42 +1,45 @@
 #!/bin/zsh
 
+# DECLARE $TWEAKNAME
+while
+    printf 'Project Name: '
+    read -r tweakname
+    [ -z "$tweakname" ] && echo 'Project Name cannot be empty; try again.'
+do true; done
+
 # MAKE .TMP
 dir=$AZULE/Work
 mkdir -p "$dir"/DEBS
-
-# DECLARE $TWEAKNAME
-while [ -z "$tweakname" ]
-do    printf 'Project Name: '
-    read -r tweakname
-    [ -z "$tweakname" ] && echo 'Project Name cannot be empty; try again.'
-done
-
-# MAKE .TMP/$TWEAKNAME
 mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
 # GET IPA
-while [ -z "$ipadir" ]
-do    printf 'IPA Directory: '
-    read -r ipadir
+while
+    printf 'IPA Directory: '
+    read -r ipadirv
+    ipadir=`echo "$ipadirv" | sed 's/\\\\//g'`
     [ -z "$ipadir" ] && echo 'IPA Directory cannot be empty; try again.'
-done
+do true; done
 
-# PREPARE IPA
+# EXTRACT IPA
 unzip -q "$ipadir" -d "$dir"/"$tweakname"
 
 # SET OUTPUT DIRECTORY
-#echo "Output Directory:"
-#read -r outdir
+#while
+    #printf 'Output Directory: '
+    #read -r odir
+    #outdir=`echo "$odir" | sed 's/\\\\//g'`
+    #[ -z "$outdir" ] && echo 'Output Directory cannot be empty; try again.'
+#do true; done
 
 # GET FILES
-while [ -z "$twk" ]
-do    printf 'Files: '
+while
+    printf 'Files: '
     read -r twk
     [ -z "$twk" ] && echo 'Files cannot be empty; try again.'
-done
-tweakids=( $(echo $twk | tr " " "\n") )
+do true; done
 
+tweakids=( $(echo $twk | tr " " "\n") )
 for i in "${tweakids[@]}"
 do
 
@@ -49,14 +52,9 @@ dpkg -x "$dir"/DEBS/$(basename "$i") "$dir"/"$tweakname"/Tweak
 *.dylib)
 rsync -a "$i" "$dir"/"$tweakname"/Tweak
 dylibnames+=( $(basename "$i") )
-
-;;
-*.bundle)
-rsync -a "$i" "$dir"/"$tweakname"/Tweak
-
 ;;
 
-*.framework)
+*.bundle|*.framework)
 rsync -a "$i" "$dir"/"$tweakname"/Tweak
 ;;
 
@@ -80,7 +78,6 @@ while
     read -r dlb
     dylibnames+=( $(echo $dlb | tr " " "\n") )
     [ -z "$dylibnames" ] && echo 'Dylibs cannot be empty; try again.'
-    [ -z "$dylibnames" ]
 do true; done
 
 # PREPARE BUNDLES
@@ -124,12 +121,9 @@ done
 done
 done
 
-# PATCH INFO.PLIST
-plutil -remove UISupportedDevices "$dir"/"$tweakname"/Payload/*.app/Info.plist
-
 # GENERATE IPA
 mkdir -p $AZULE/Packages
-zip -r -q -X $AZULE/Packages/$tweakname.ipa Payload
+zip -rqX $AZULE/Packages/$tweakname.ipa Payload
 
 # CLEANUP
 rm -rf "$dir"
