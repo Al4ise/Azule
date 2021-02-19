@@ -61,11 +61,11 @@ rsync -a "$i" "$dir"/"$tweakname"/Tweak
 ;;
 
 *) #PARCILITY
-if [ "$(curl -s https://api.parcility.co/db/package/"$i" | jq -r '.status')" = "true" ]
+if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]
 then
 
-curl -s -Lo "$dir/DEBS/$i.deb" "$(curl -s 'https://api.parcility.co/db/package/"$i"' | jq -r '.data.repo.url + .data.builds[].Filename')"
-dpkg -x "$dir"/DEBS/"$i".deb "$dir"/"$tweakname"/Tweak
+curl -s -Lo $dir/DEBS/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')"
+dpkg -x "$dir"/DEBS/"$i" "$dir"/"$tweakname"/Tweak
 else
 echo ""$i" isn't Available on Parcility"
 fi
