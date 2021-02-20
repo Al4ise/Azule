@@ -16,8 +16,7 @@ cd "$dir"/"$tweakname"
 # GET IPA
 while
     printf 'IPA Directory: '
-    read -r ipadirv
-    ipadir=`echo "$ipadirv" | sed 's/\\\\//g'`
+    read ipadir
     [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done
 
@@ -26,10 +25,9 @@ unzip -q "$ipadir" -d "$dir"/"$tweakname"
 
 # SET OUTPUT DIRECTORY
 #while
-    #printf 'Output Directory: '
-    #read -r odir
-    #outdir=`echo "$odir" | sed 's/\\\\//g'`
-    #[ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
+#    printf 'Output Directory: '
+#    read outdir
+#    [ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
 #do true; done
 
 # GET FILES
