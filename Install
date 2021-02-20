@@ -10,14 +10,14 @@ chmod +x Uninstall
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]
-then
-ln -s $AZULE/install /usr/local/bin/update-azule
+    then
+    ln -s $AZULE/install /usr/local/bin/update-azule
 fi
 
 # AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/azule ]
-then
-ln -s $AZULE/azule /usr/local/bin/azule
+    then
+    ln -s $AZULE/azule /usr/local/bin/azule
 fi
 
 # CHECK IF ALL DEPENDENCIES EXIST
@@ -37,8 +37,8 @@ checkScriptDependencies "${dependencies[@]}"
 
 # REMOVE OLD SUBSTRATE
 if [ -d CydiaSubstrate.framework ]
-then
-rm -rf CydiaSubstrate.framework
+    then
+    rm -rf CydiaSubstrate.framework
 fi
 
 # INSTALL SUBSTRATE
@@ -54,7 +54,7 @@ rm -rf $AZULE/.tmp
 
 # CHECK IF XCODE CLI UTILS ARE INSTALLED
 xcodecli=$(xcode-select -p 1>/dev/null;echo $?)
-if [ $tmpvar = 2 ]
-then
-xcode-select --install
+if [ "$xcodecli" = "2" ]
+    then
+    xcode-select --install
 fi
