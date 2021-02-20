@@ -4,7 +4,7 @@
 while
     printf 'Project Name: '
     read -r tweakname
-    [ -z "$tweakname" ] && echo 'Project Name cannot be empty; try again.'
+    [ -z "$tweakname" ] && echo 'Nice try. Now name your project.'
 do true; done
 
 # MAKE .TMP
@@ -18,7 +18,7 @@ while
     printf 'IPA Directory: '
     read -r ipadirv
     ipadir=`echo "$ipadirv" | sed 's/\\\\//g'`
-    [ -z "$ipadir" ] && echo 'IPA Directory cannot be empty; try again.'
+    [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done
 
 # EXTRACT IPA
@@ -29,14 +29,14 @@ unzip -q "$ipadir" -d "$dir"/"$tweakname"
     #printf 'Output Directory: '
     #read -r odir
     #outdir=`echo "$odir" | sed 's/\\\\//g'`
-    #[ -z "$outdir" ] && echo 'Output Directory cannot be empty; try again.'
+    #[ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
 #do true; done
 
 # GET FILES
 while
-    printf 'Files: '
+    printf 'Files or Tweak IDs: '
     read -r twk
-    [ -z "$twk" ] && echo 'Files cannot be empty; try again.'
+    [ -z "$twk" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
 
 tweakids=( $(echo $twk | tr " " "\n") )
@@ -58,12 +58,12 @@ for i in "${tweakids[@]}"; do
             rsync -a "$i" "$dir"/"$tweakname"/Tweak
             ;;
 
-        *) #PARCILITY
+        *) # PARCILITY
             if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
                 curl -s -Lo $dir/DEBS/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')"
-                dpkg -x "$dir"/DEBS/"$i" "$dir"/"$tweakname"/Tweak
+                dpkg -x "$dir"/DEBS/"$i".deb "$dir"/"$tweakname"/Tweak
             else
-                echo ""$i" isn't Available on Parcility"
+                echo ""$i" isn't available on Parcility. Try manually getting the files to inject."
             fi
             debs=1
             ;;
@@ -84,7 +84,7 @@ if [ "$debs" = "1" ]; then
                     dylibnames+=( "$i" )
                 fi
             done
-    [ -z "$dylibnames" ] && echo 'Dylibs cannot be empty; try again.'
+    [ -z "$dylibnames" ] && echo 'Did you just give me all of those files for nothing? Nope.'
     do true; done
 fi
 
@@ -116,7 +116,6 @@ for i in "${chain[@]}" ;do
             if [[ "$u" =~ "$x" ]]; then
                 install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
             fi
-
         done
     done
 done
