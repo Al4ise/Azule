@@ -42,42 +42,54 @@ do true; done
 tweakids=( $(echo $twk | tr " " "\n") )
 for i in "${tweakids[@]}"; do
 
-case "$i" in
-*.deb)
-rsync -a "$i" "$dir"/DEBS
-dpkg -x "$dir"/DEBS/$(basename "$i") "$dir"/"$tweakname"/Tweak
-debs=1
-;;
+    case "$i" in
+        *.deb)
+            rsync -a "$i" "$dir"/DEBS
+            dpkg -x "$dir"/DEBS/$(basename "$i") "$dir"/"$tweakname"/Tweak
+            debs=1
+            ;;
 
-*.dylib)
-rsync -a "$i" "$dir"/"$tweakname"/Tweak
-dylibnames+=( $(basename "$i") )
-;;
+        *.dylib)
+            rsync -a "$i" "$dir"/"$tweakname"/Tweak
+            dylibnames+=( $(basename "$i") )
+            ;;
 
-*.bundle|*.framework)
-rsync -a "$i" "$dir"/"$tweakname"/Tweak
-;;
+        *.bundle|*.framework)
+            rsync -a "$i" "$dir"/"$tweakname"/Tweak
+            ;;
 
-*) #PARCILITY
-if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
-curl -s -Lo $dir/DEBS/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')"
-dpkg -x "$dir"/DEBS/"$i" "$dir"/"$tweakname"/Tweak
-else
-echo ""$i" isn't Available on Parcility"
-fi
-debs=1
-;;
-esac
+        *) #PARCILITY
+            if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
+                curl -s -Lo $dir/DEBS/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')"
+                dpkg -x "$dir"/DEBS/"$i" "$dir"/"$tweakname"/Tweak
+            else
+                echo ""$i" isn't Available on Parcility"
+            fi
+            debs=1
+            ;;
+    esac
 done
 
 # SPECIFY DYLIBS
 if [ "$debs" = "1" ]; then
-while
-    printf 'Dylibs to inject: '
-    read -r dlb
-    dylibnames+=( $(echo $dlb | tr " " "\n") )
+    dlb+=( $(echo "$(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;)" | tr " " "\n") )
+    while
+        echo 'Available Dylibs: '
+        PS3="Choose Dylibs: "
+            select i in "${dlb[@]}";
+            do
+                case "$i" in
+                "$done")
+                    break
+                    ;;
+            
+                *)
+                    dylibnames+=( "$i" )
+                    ;;
+                esac
+            done
     [ -z "$dylibnames" ] && echo 'Dylibs cannot be empty; try again.'
-do true; done
+    do true; done
 fi
 
 # MOVE BUNDLES
@@ -87,8 +99,8 @@ find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' 
 executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
 for i in "${dylibnames[@]}"; do
-find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
-$AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
+    find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
+    $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
 done
 
 # FIX LINKS
@@ -96,21 +108,21 @@ chain+=( $dylibnames )
 frameworks=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.framework') $AZULE/CydiaSubstrate.framework )
 
 for i in "${frameworks[@]}"; do
-rsync -a "$i" Payload/*.app/Frameworks
-chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
+    rsync -a "$i" Payload/*.app/Frameworks
+    chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
 done
 
 for i in "${chain[@]}" ;do
-codesign --remove-signature Payload/*.app/Frameworks/"$i"
-links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
-for u in "${links[@]}"; do
-for x in "${chain[@]}"; do
-if [[ "$u" =~ "$x" ]]; then
-install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
-fi
+    codesign --remove-signature Payload/*.app/Frameworks/"$i"
+    links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
+    for u in "${links[@]}"; do
+        for x in "${chain[@]}"; do
+            if [[ "$u" =~ "$x" ]]; then
+                install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
+            fi
 
-done
-done
+        done
+    done
 done
 
 # GENERATE IPA
