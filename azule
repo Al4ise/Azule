@@ -72,21 +72,17 @@ done
 
 # SPECIFY DYLIBS
 if [ "$debs" = "1" ]; then
-    dlb+=( $(echo "$(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;)" | tr " " "\n") )
+    dlb=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) "Done" )
     while
         echo 'Available Dylibs: '
         PS3="Choose Dylibs: "
             select i in "${dlb[@]}";
             do
-                case "$i" in
-                "$done")
+                if [ "$i" = "Done" ]; then
                     break
-                    ;;
-            
-                *)
+                    else
                     dylibnames+=( "$i" )
-                    ;;
-                esac
+                fi
             done
     [ -z "$dylibnames" ] && echo 'Dylibs cannot be empty; try again.'
     do true; done
