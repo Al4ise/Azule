@@ -12,8 +12,7 @@ echo "export AZULE=~/azule" >> ~/.zprofile
 ```
 **Note:** For the change to take effect, you have to restart your terminal.
 
-2. Install Azule
-Copy the following commands, and paste them in a Terminal window
+2. Clone and Setup Azule
 ```zsh
 git clone --recursive https://github.com/Al4ise/Azule $AZULE
 chmod +x $AZULE/install
