@@ -32,7 +32,7 @@ do true; done
 
 # GET FILES
 while
-    printf 'Files or Tweak IDs: '
+    printf 'Files or Tweak BundleIDs: '
     read twk
     [ -z "$twk" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
