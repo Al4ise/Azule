@@ -36,8 +36,8 @@ azule
 ```
 ### Project Requirements
 * A Project Name... obviously
-* A **decrypted** IPA of the app you are trying to modify.
-* The files(.bundle, .deb, .dylib, .framework) **OR** the Bundle ID of the tweak you want to inject (This only works if the tweak can be found on [Parcility](https://parcility.co))
+* A **decrypted** IPA of the app you are trying to modify. Encrypted ones won't work.
+* The files(.bundle .deb .dylib .framework) **OR** the Bundle ID of the tweak you want to inject (This only works if the tweak can be found on [Parcility](https://parcility.co))
 
 ## Updating
 ```
