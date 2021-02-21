@@ -45,7 +45,7 @@ During its installation, Azule will check whether its dependencies (Xcode CLI To
 ## Usage
 1. Run `azule` in any terminal window to initialize
 2. When asked for an IPA file, provide the path to a **decrypted** IPA of the app you are trying to modify. **Encrypted IPAs don't work**
-3. When asked for Files or Tweak Bundle IDs, you can either provide the local paths to the files you wish to inject, or type the Bundle IDs of the tweaks (This only works if the tweaks can be found on [Parcility](https://parcility.co)).
+3. When asked for Files or Tweak Bundle IDs, you can either provide the local paths to the files you wish to inject, or type the Bundle IDs of the tweaks (This only works if the tweaks can be found on [Parcility](https://parcility.co))
 
 ## Updating
 Run `update-azule` in any terminal window to update Azule
