@@ -3,15 +3,14 @@
 A tool used to inject jailbreak tweaks into jailed iOS apps.
 
 ## Features
-* Doesn't Require Theos
-* Relatively easy to use
+* Much faster than alternatives
 * Works for more tweaks than even [Theos Jailed](https://github.com/kabiroberai/theos-jailed)
 * Supports importing multiple tweaks at once
 * Supports importing tweaks, just by typing in their BundleID. Powered by [Parcility](https://parcility.co)
 * You can always specify custom files to import:
   - Supports .deb .bundle .dylib and .framework files
 * Provides an interactive solution to importing only the dylib files you need
-
+* Doesn't Require Theos
 
 ### Not Implemented Yet
 * Fully Custom files/Folders
