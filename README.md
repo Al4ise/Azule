@@ -1,8 +1,8 @@
 # Azule
 
-A tool used to inject files/tweaks in iOS apps.
+A tool used to inject jailbreak tweaks into jailed iOS apps.
 
-## Requirements
+## Tool Requirements
 * Homebrew
 * Xcode Command Line Tools
 
@@ -17,7 +17,7 @@ Homebrew is necessary to install dependencies like **jq** and **dpkg**. If you h
 ```
 **You may be asked for your password during the installation. Read [this forum post](https://discourse.brew.sh/t/password-when-installing-homebrew/226/2) to learn more.**
 
-### Azule
+### Installing Azule
 
 ```zsh
 echo "export AZULE=~/azule" >> ~/.zprofile
@@ -28,16 +28,16 @@ $AZULE/install
 **Once again, you may be asked to provide your password.**
 
 ### Xcode Command Line Tools
-During its installation, Azule will check if Xcode CLI Tools have already been installed. In case they haven't, you will automatically be prompted to install them.
+During its installation, Azule will check if Xcode CLI Tools are installed. If they aren't, you will be prompted to install them.
 
 ## Usage
 ```
 azule
 ```
-### Requirements:
+### Project Requirements
 * A Project Name... obviously
-* A **decrypted** IPA of the app you are trying to modify
-* The files **OR** the Bundle ID of the tweak you want to inject (This only works if the tweak can be found on [Parcility](https://parcility.co))
+* A **decrypted** IPA of the app you are trying to modify. You can get one on [AppCake](https://iphonecake.com/).
+* The files(.bundle, .deb, .dylib, .framework) **OR** the Bundle ID of the tweak you want to inject (This only works if the tweak can be found on [Parcility](https://parcility.co))
 
 ## Updating
 ```
@@ -49,6 +49,3 @@ update-azule
 
 * [Kabir Oberai](https://github.com/kabiroberai/theos-jailed) - Idea of jailed tweaks
 * [Tyilo](https://github.com/Tyilo/insert_dylib) - Creator of insert_dylib
-
-## License
-[GPL 3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
