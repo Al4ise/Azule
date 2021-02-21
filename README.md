@@ -24,18 +24,16 @@ $AZULE/install
 During its installation, Azule will check whether its dependencies(Xcode CLI Tools, Homebrew, dpkg, and jq) are installed. If not, you may be prompted to install them.
 
 ## Usage
-```
-azule
-```
+Run ```azule``` in any terminal window to initialize
+
 ### Project Requirements
 * A Project Name... obviously
 * A **decrypted** IPA of the app you are trying to modify. Encrypted ones won't work.
 * The files(.bundle .deb .dylib .framework) **OR** the Bundle ID of the tweak you want to inject (This only works if the tweak can be found on [Parcility](https://parcility.co))
 
 ## Updating
-```
-update-azule
-```
+Run ```update-azule``` in any terminal window to update Azule
+
 **Note:** If you have modified any of Azule's files, the updater will abort so that your changes don't get overwritten.
 
 ## Credits
