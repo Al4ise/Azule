@@ -1,5 +1,26 @@
 #!/bin/zsh
 
+# CHECK IF BREW EXISTS
+which -s brew >> /dev/null
+if [[ $? != 0 ]] ; then
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+
+# CHECK IF XCODE CLI UTILS EXIST
+xcode-select -p 1>/dev/null
+if [ $? != 0 ]; then
+    xcode-select --install
+fi
+
+# CHECK IF ADDITIONAL REQUIREMENTS EXIST
+dependencies=('jq' 'dpkg')
+for i in "${dependencies[@]}"; do
+    which -s "$i" >> /dev/null
+    if [[ $? != 0 ]] ; then
+    brew install "$i"
+    fi
+done
+
 mkdir -p ~/azule/.tmp
 cd $AZULE
 git pull
@@ -20,27 +41,6 @@ if [ ! -f /usr/local/bin/azule ]
     ln -s $AZULE/azule /usr/local/bin/azule
 fi
 
-hbrew=$(which brew)
-if [ $hbrew = "brew not found" ]
-    then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
-
-# CHECK IF ALL DEPENDENCIES EXIST
-checkScriptDependencies () { # "${dependencies[@]}"
-    local _packages=( "$@" )
-    local _package=
-    for _package in ${_packages[@]}; do
-        hash $_package
-        if (( $? > 0 )); then
-            brew install $_package
-        fi
-    done
-}
-
-dependencies=('jq' 'dpkg')
-checkScriptDependencies "${dependencies[@]}"
-
 # REMOVE OLD SUBSTRATE
 if [ -d CydiaSubstrate.framework ]
     then
@@ -57,10 +57,3 @@ rm -rf "$AZULE/CydiaSubstrate.framework/Libraries" "$AZULE/CydiaSubstrate.framew
 
 # CLEANUP
 rm -rf $AZULE/.tmp
-
-# CHECK IF XCODE CLI UTILS ARE INSTALLED
-xcodecli=$(xcode-select -p 1>/dev/null;echo $?)
-if [ "$xcodecli" = "2" ]
-    then
-    xcode-select --install
-fi
