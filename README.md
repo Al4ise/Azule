@@ -2,8 +2,16 @@
 
 A tool used to inject jailbreak tweaks into jailed iOS apps.
 
-## Tool Requirements
-* Xcode
+## Features
+* 
+* 
+* 
+* 
+* 
+* 
+
+## Requirements
+* [Xcode](https://apps.apple.com/us/app/xcode/id497799835?ls=1&mt=12)
 
 ## Installation
 1. Set the $AZULE environment variable:
@@ -21,7 +29,7 @@ $AZULE/install
 **You may be asked to provide your password.**
 
 ### Dependencies 
-During its installation, Azule will check whether its dependencies(Xcode CLI Tools, Homebrew, dpkg, and jq) are installed. If not, you may be prompted to install them.
+During its installation, Azule will check whether its dependencies (Xcode CLI Tools, Homebrew, dpkg, and jq) are installed. If not, you may be prompted to install them.
 
 ## Usage
 1. Run ```azule``` in any terminal window to initialize
