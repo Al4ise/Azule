@@ -20,6 +20,12 @@ if [ ! -f /usr/local/bin/azule ]
     ln -s $AZULE/azule /usr/local/bin/azule
 fi
 
+hbrew=$(which brew)
+if [ $hbrew = "brew not found" ]
+    then
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+
 # CHECK IF ALL DEPENDENCIES EXIST
 checkScriptDependencies () { # "${dependencies[@]}"
     local _packages=( "$@" )
