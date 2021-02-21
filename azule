@@ -21,23 +21,23 @@ while
 do true; done
 
 # EXTRACT IPA
-unzip -q "$ipadir" -d "$dir"/"$tweakname"
+eval "unzip -q "$ipadir" -d "$dir/$tweakname""
 
 # SET OUTPUT DIRECTORY
-#while
-#    printf 'Output Directory: '
-#    read outdir
-#    [ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
-#do true; done
+while
+    printf 'Output Directory: '
+    read outdir
+    [ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
+do true; done
 
 # GET FILES
 while
     printf 'Files or Tweak IDs: '
-    read -r twk
+    read twk
     [ -z "$twk" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
 
-tweakids=( $(echo $twk | tr " " "\n") )
+eval "tweakids=( $(echo $twk | tr " " "\n") )"
 for i in "${tweakids[@]}"; do
 
     case "$i" in
@@ -118,9 +118,6 @@ for i in "${chain[@]}" ;do
     done
 done
 
-# GENERATE IPA
-mkdir -p $AZULE/Packages
-zip -rqX $AZULE/Packages/$tweakname.ipa Payload
-
-# CLEANUP
+# WRAPPING UP
+eval "zip -rqX "$outdir/$tweakname.ipa" Payload"
 rm -rf "$dir"
