@@ -15,8 +15,8 @@ $AZULE/install
 ```
 **You may be asked to provide your password.**
 
-### Xcode Command Line Tools
-During its installation, Azule will check if Xcode CLI Tools and Homebrew are installed. If they aren't, you will be prompted to install them.
+### Dependencies 
+During its installation, Azule will check whether its dependencies(Xcode CLI Tools, Homebrew, dpkg, and jq) are installed. If not, you may be prompted to install them.
 
 ## Usage
 ```
