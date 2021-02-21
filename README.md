@@ -7,18 +7,16 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 * Works for more tweaks than even [Theos Jailed](https://github.com/kabiroberai/theos-jailed)
 * Supports importing tweaks, just by typing in their Bundle ID. Powered by [Parcility](https://parcility.co)
 * Supports importing multiple tweaks at once
-* You can always specify custom files to import. Files currently supported:
-  - .deb
-  - .dylib
-  - .bundle
-  - .framework
+* You can always specify custom files and folders to import:
+  - .deb .dylib and .framework files will be processed and imported 
+  - .bundle and other files will be copied to the root directory of the app
+
 * Easy to use:
   - Provides an interactive solution to importing only the dylib files you need
   - Includes commands( `azule` and `update-azule`) that can be invoked just by typing them into a terminal
 * Doesn't require Theos
 
 ### To-do
-* Fully custom files/folders
 * Colored Terminal Output
 
 ## Requirements
