@@ -9,7 +9,9 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 * Supports importing tweaks, just by typing in their BundleID. Powered by [Parcility](https://parcility.co)
 * You can always specify custom files to import:
   - Supports .deb .bundle .dylib and .framework files
-* Provides an interactive solution to importing only the dylib files you need
+* Easy to use:
+  - Provides an interactive solution to importing only the dylib files you need
+  - Includes commands( ```azule``` and ```update-azule```) that can be invoked just by typing them into a terminal
 * Doesn't Require Theos
 
 ### Not Implemented Yet
