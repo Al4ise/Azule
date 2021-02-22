@@ -74,6 +74,7 @@ find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.bundle' ! -iregex '.*\.(bundle)/
 
 # SPECIFY DYLIBS
 if [ "$debs" = "1" ]; then
+    export COLUMNS=1
     dlb=( $(find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.dylib' -exec basename {} \;) 'Done' )
     while
         echo 'Available Dylibs: '
