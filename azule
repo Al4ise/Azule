@@ -10,7 +10,6 @@ do true; done
 # MAKE .TMP
 dir=$AZULE/Work
 mkdir -p "$dir"/DEBS
-mkdir -p "$dir"/"$tweakname"/Tweak/Resources/Frameworks
 mkdir -p "$dir"/"$tweakname"/Tweak/DEB
 cd "$dir"/"$tweakname"
 
@@ -49,7 +48,7 @@ for i in "${tweakids[@]}"; do
                 ;;
 
             *.dylib)
-                rsync -a "$i" "$dir"/"$tweakname"/Tweak/Resources/Frameworks
+                rsync -a "$i" "$dir"/"$tweakname"/Tweak
                 dylibnames+=( $(basename "$i") )
                 ;;
 
@@ -94,14 +93,11 @@ fi
 # MOVE BUNDLES
 find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
 
-# MERGE RESOURCES
-rsync -a "$dir"/"$tweakname"/Tweak/Resources/ "$dir"/"$tweakname"/Payload/*.app/
-
 # INJECT DYLIBS
 executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
 for i in "${dylibnames[@]}"; do
-    find -E "$dir"/"$tweakname"/Tweak/DEB -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
+    find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
     $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
 done
 
@@ -114,7 +110,7 @@ for i in "${frameworks[@]}"; do
     chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
 done
 
-for i in "${chain[@]}" ;do
+for i in "${chain[@]}"; do
     codesign --remove-signature Payload/*.app/Frameworks/"$i"
     links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
     for u in "${links[@]}"; do
@@ -128,4 +124,4 @@ done
 
 # WRAPPING UP
 eval "zip -rqX "$outdir/$tweakname.ipa" Payload"
-#rm -rf "$dir"
+rm -rf "$dir"
