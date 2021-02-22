@@ -54,12 +54,11 @@ for i in "${tweakids[@]}"; do
                 ;;
 
             *.framework)
-                rsync -a "$i" "$dir"/"$tweakname"/Tweak/Resources/Frameworks
-                frameworks+=( $(basename "$i") )
+                rsync -a "$i" "$dir"/"$tweakname"/Tweak
                 ;;
             
             *)
-                rsync -a "$i" "$dir"/"$tweakname"/Tweak/Resources
+                rsync -a "$i" "$dir"/"$tweakname"/Payload/*.app
                 ;;
         esac
     else
@@ -108,7 +107,7 @@ done
 
 # FIX LINKS
 chain+=( $dylibnames )
-frameworks+=( $(find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.framework') $AZULE/CydiaSubstrate.framework )
+frameworks+=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.framework') $AZULE/CydiaSubstrate.framework )
 
 for i in "${frameworks[@]}"; do
     rsync -a "$i" Payload/*.app/Frameworks
