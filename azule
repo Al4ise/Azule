@@ -14,13 +14,14 @@ cd "$dir"/"$tweakname"
 
 # GET IPA
 while
-    printf 'IPA Directory: '
+    printf 'Path to IPA: '
     read ipadir
     [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done
 
 # EXTRACT IPA
 eval "unzip -q "$ipadir" -d "$dir/$tweakname""
+executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
 # SET OUTPUT DIRECTORY
 while
@@ -36,7 +37,7 @@ while
     [ -z "$twk" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
 
-eval "tweakids=( $(echo $twk | tr " " "\n") )"
+eval "tweakids=( $twk )"
 for i in "${tweakids[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
@@ -66,19 +67,21 @@ for i in "${tweakids[@]}"; do
         fi
     debs=1
     fi
-    
 done
+
+# MOVE BUNDLES
+find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
 
 # SPECIFY DYLIBS
 if [ "$debs" = "1" ]; then
-    dlb=( $(find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.dylib' -exec basename {} \;) "Done" )
+    dlb=( $(find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.dylib' -exec basename {} \;) 'Done' )
     while
         echo 'Available Dylibs: '
         PS3="Choose Dylibs: "
             select i in "${dlb[@]}";
             do
                 if [ "$i" = "Done" ]; then
-                    break
+                    break;
                     else
                     dylibnames+=( "$i" )
                 fi
@@ -87,12 +90,7 @@ if [ "$debs" = "1" ]; then
     do true; done
 fi
 
-# MOVE BUNDLES
-find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
-
 # INJECT DYLIBS
-executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
-
 for i in "${dylibnames[@]}"; do
     find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
     $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
