@@ -60,8 +60,7 @@ for i in "${tweakids[@]}"; do
         esac
     else
         if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
-            curl -sLo "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')"
-            dpkg -x "$dir"/"$tweakname"/"$i".deb "$dir"/"$tweakname"/Tweak/DEB
+           dpkg -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") "$dir"/"$tweakname"/Tweak/DEB
         else
             echo ""$i" isn't available on Parcility. Try manually getting the files to inject."
         fi
