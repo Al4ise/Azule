@@ -3,7 +3,7 @@
 A tool used to inject jailbreak tweaks into jailed iOS apps.
 
 ## Features
-* Much faster than alternatives
+* Much faster and more efficient than alternatives
 * Works for a wide range of tweaks
 * Supports importing tweaks, just by typing in their Bundle ID. Powered by [Parcility](https://parcility.co)
 * Supports importing multiple tweaks at once
