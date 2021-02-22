@@ -4,7 +4,7 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 
 ## Features
 * Much faster than alternatives
-* Works for more tweaks than even [Theos Jailed](https://github.com/kabiroberai/theos-jailed)
+* Works for a wide range of tweaks
 * Supports importing tweaks, just by typing in their Bundle ID. Powered by [Parcility](https://parcility.co)
 * Supports importing multiple tweaks at once
 * You can always specify custom files and folders to import:
