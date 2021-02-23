@@ -48,6 +48,7 @@ for i in "${tweakids[@]}"; do
 
             *.dylib)
                 rsync -a "$i" "$dir"/"$tweakname"/Payload/*.app/Frameworks
+                $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable"
                 dylibnames+=( $(basename "$i") )
                 ;;
 
@@ -84,6 +85,7 @@ if [ "$debs" = "1" ]; then
                     else
                     find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex -exec rsync -a {} Payload/*.app/Frameworks \;
                     dylibnames+=( "$i") )
+                    $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
                 fi
             done
     [ -z "$dylibnames" ] && echo 'Did you just give me all of those files for nothing? Nope.'
@@ -92,11 +94,6 @@ fi
 
 # MOVE BUNDLES
 find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
-
-# INJECT DYLIBS
-for i in "${dylibnames[@]}"; do
-    $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
-done
 
 # FIX LINKS
 chain+=( $dylibnames )
