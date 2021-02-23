@@ -7,21 +7,12 @@ while
     [ -z "$tweakname" ] && echo 'Nice try. Now name your project.'
 do true; done
 
-# MAKE .TMP
-dir=$AZULE/Work
-mkdir -p "$dir"/"$tweakname"/Tweak/DEB
-cd "$dir"/"$tweakname"
-
 # GET IPA
 while
     printf 'Path to IPA: '
     read ipadir
     [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done
-
-# EXTRACT IPA
-eval "unzip -q "$ipadir" -d "$dir/$tweakname""
-executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
 # SET OUTPUT DIRECTORY
 while
@@ -37,22 +28,32 @@ while
     [ -z "$twk" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
 
+# MAKE .TMP
+dir=$AZULE/Work
+mkdir -p "$dir"/"$tweakname"/Tweak
+cd "$dir"/"$tweakname"
+
+# EXTRACT IPA
+eval "unzip -q "$ipadir" -d "$dir/$tweakname""
+executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
+
 eval "tweakids=( $twk )"
 for i in "${tweakids[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
             *.deb)
-                dpkg -x "$i" "$dir"/"$tweakname"/Tweak/DEB
+                dpkg -x "$i" "$dir"/"$tweakname"/Tweak
                 debs=1
                 ;;
 
             *.dylib)
-                rsync -a "$i" "$dir"/"$tweakname"/Tweak
+                rsync -a "$i" "$dir"/"$tweakname"/Payload/*.app/Frameworks
                 dylibnames+=( $(basename "$i") )
                 ;;
 
             *.framework)
-                rsync -a "$i" "$dir"/"$tweakname"/Tweak
+                rsync -a "$i" Payload/*.app/Frameworks
+                chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
                 ;;
             
             *)
@@ -61,7 +62,7 @@ for i in "${tweakids[@]}"; do
         esac
     else
         if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
-           dpkg -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") "$dir"/"$tweakname"/Tweak/DEB
+           dpkg -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") "$dir"/"$tweakname"/Tweak
         else
             echo ""$i" isn't available on Parcility. Try manually getting the files to inject."
         fi
@@ -69,13 +70,10 @@ for i in "${tweakids[@]}"; do
     fi
 done
 
-# MOVE BUNDLES
-find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
-
 # SPECIFY DYLIBS
 if [ "$debs" = "1" ]; then
     export COLUMNS=1
-    dlb=( $(find -E "$dir"/"$tweakname"/Tweak/DEB -iname '*.dylib' -exec basename {} \;) 'Done' )
+    dlb=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
     while
         echo 'Available Dylibs: '
         PS3="Choose Dylibs: "
@@ -84,16 +82,19 @@ if [ "$debs" = "1" ]; then
                 if [ "$i" = "Done" ]; then
                     break;
                     else
-                    dylibnames+=( "$i" )
+                    find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex -exec rsync -a {} Payload/*.app/Frameworks \;
+                    dylibnames+=( "$i") )
                 fi
             done
     [ -z "$dylibnames" ] && echo 'Did you just give me all of those files for nothing? Nope.'
     do true; done
 fi
 
+# MOVE BUNDLES
+find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
+
 # INJECT DYLIBS
 for i in "${dylibnames[@]}"; do
-    find -E "$dir"/"$tweakname"/Tweak -iname "$i" ! -iregex '.*\.(app)/.+' -exec rsync -a {} Payload/*.app/Frameworks \;
     $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable"
 done
 
