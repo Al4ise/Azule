@@ -7,21 +7,12 @@ while
     [ -z "$tweakname" ] && echo 'Nice try. Now name your project.'
 do true; done
 
-# MAKE .TMP
-dir=$AZULE/Work
-mkdir -p "$dir"/"$tweakname"/Tweak/DEB
-cd "$dir"/"$tweakname"
-
 # GET IPA
 while
     printf 'Path to IPA: '
     read ipadir
     [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done
-
-# EXTRACT IPA
-eval "unzip -q "$ipadir" -d "$dir/$tweakname""
-executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
 # SET OUTPUT DIRECTORY
 while
@@ -36,6 +27,15 @@ while
     read twk
     [ -z "$twk" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
+
+# MAKE .TMP
+dir=$AZULE/Work
+mkdir -p "$dir"/"$tweakname"/Tweak/DEB
+cd "$dir"/"$tweakname"
+
+# EXTRACT IPA
+unzip -q "$(eval 'echo "$ipadir"')" -d "$dir/$tweakname"
+executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
 eval "tweakids=( $twk )"
 for i in "${tweakids[@]}"; do
@@ -63,7 +63,7 @@ for i in "${tweakids[@]}"; do
         if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
            dpkg -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") "$dir"/"$tweakname"/Tweak/DEB
         else
-            echo ""$i" isn't available on Parcility. Try manually getting the files to inject."
+            echo ""$i" isn't available on Parcility. Try manually downloading the DEBs you wish to inject."
         fi
     debs=1
     fi
@@ -119,5 +119,5 @@ for i in "${chain[@]}"; do
 done
 
 # WRAPPING UP
-eval "zip -rqX "$outdir/$tweakname.ipa" Payload"
+zip -rqX "$(eval 'echo "$outdir"')"/" "$tweakname.ipa" Payload
 rm -rf "$dir"
