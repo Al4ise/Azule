@@ -41,10 +41,8 @@ eval "tweakids=( $twk )"
 for i in "${tweakids[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
-            *.deb)
-                dpkg -x "$i" Tweak
-                ;;
-
+            *.deb) dpkg -x "$i" Tweak ;;
+            
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
                 $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
@@ -56,9 +54,7 @@ for i in "${tweakids[@]}"; do
                 chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
                 ;;
             
-            *)
-                rsync -a "$i" Payload/*.app
-                ;;
+            *) rsync -a "$i" Payload/*.app ;;
         esac
     else
         if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
