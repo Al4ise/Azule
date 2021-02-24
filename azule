@@ -24,8 +24,8 @@ do true; done
 # GET FILES
 while
     printf 'Files or Tweak IDs: '
-    read twk
-    [ -z "$twk" ] && echo 'You want me to not touch your app? Impossible.'
+    read files
+    [ -z "$files" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
 
 # MAKE .TMP
@@ -35,10 +35,9 @@ cd "$dir"/"$tweakname"
 
 # EXTRACT IPA
 eval "unzip -q "$ipadir" -d "$dir/$tweakname""
-executable=("$dir"/"$tweakname"/Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
+executable=(Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
-eval "tweakids=( $twk )"
-for i in "${tweakids[@]}"; do
+for i in $(echo $files ); do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
             *.deb) dpkg -x "$i" Tweak ;;
