@@ -3,7 +3,7 @@
 A tool used to inject jailbreak tweaks into jailed iOS apps.
 
 ## Features
-* Fast and Lightweight - Much faster and more efficient than alternatives
+* Written with Speed and Efficiency in mind
 * Works for a wide range of tweaks
 * Supports importing tweaks, just by typing in their Bundle ID. Powered by [Parcility](https://parcility.co)
 * Supports importing multiple tweaks at once
@@ -13,8 +13,7 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 
 * Easy to use:
   - Provides an interactive solution to importing only the dylib files you need
-  - Includes commands( `azule` and `update-azule`) that can be invoked just by typing them into a terminal
-* Doesn't require Theos
+  - Includes the commands `azule` and `update-azule` which can be invoked from any terminal window.
 
 ### To-do
 * Colored Terminal Output
