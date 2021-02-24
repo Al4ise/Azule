@@ -30,20 +30,17 @@ chmod +x Install
 chmod +x Uninstall
 
 # UPDATE-AZULE GLOBAL COMMAND
-if [ ! -f /usr/local/bin/update-azule ]
-    then
+if [ ! -f /usr/local/bin/update-azule ]; then
     ln -s $AZULE/install /usr/local/bin/update-azule
 fi
 
 # AZULE GLOBAL COMMAND
-if [ ! -f /usr/local/bin/azule ]
-    then
+if [ ! -f /usr/local/bin/azule ]; then
     ln -s $AZULE/azule /usr/local/bin/azule
 fi
 
 # REMOVE OLD SUBSTRATE
-if [ -d CydiaSubstrate.framework ]
-    then
+if [ -d CydiaSubstrate.framework ]; then
     rm -rf CydiaSubstrate.framework
 fi
 
