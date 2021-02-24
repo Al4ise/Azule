@@ -76,15 +76,15 @@ if [ "$debs" = "1" ]; then
     export COLUMNS=1
     dlb=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
         echo 'Available Dylibs: '
-        PS3="Choose Dylibs: "
+        PS3="Choose Dylibs (recommended): "
             select i in "${dlb[@]}";
             do
                 if [ "$i" = "Done" ]; then
                     break;
                     else
                     find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-                    chain+=( "$i" )
                     $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+                    chain+=( "$i" )
                 fi
             done
 fi
@@ -94,7 +94,6 @@ find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' 
 
 # FIX LINKS
 frameworks+=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.framework') $AZULE/CydiaSubstrate.framework )
-
 for i in "${frameworks[@]}"; do
     rsync -a "$i" Payload/*.app/Frameworks
     chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
