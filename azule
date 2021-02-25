@@ -1,32 +1,71 @@
 #!/bin/zsh
 
+while getopts n:i:o:f:d: args; do
+    case "$args" in
+        n) tweakname=${OPTARG};;
+        i) ipadir=${OPTARG};;
+        o) outdir=${OPTARG};;
+        f) files=("$OPTARG")
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                files+=($(eval "echo \${$OPTIND}"))
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
+        d) dlb=("$OPTARG")
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                dlb+=($(eval "echo \${$OPTIND}"))
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
+        *)
+            echo "Usage: azule [-n Name] [-i path] [-f paths/bundleids] [-d name]"
+            echo "  -n     Specify the Project Name."
+            echo "  -i     Specify the path to the IPA you wish to patch."
+            echo "  -o     Specify an Output Directory."
+            echo "  -f     Specify the Files or Tweak Bundle IDs you wish to import."
+            echo "  -d     From the .deb files imported, specify the names of the dylibs(e.g: Cercube.dylib) you wish to inject."
+            echo
+            exit 1
+            ;;
+    esac
+done
 # DECLARE $TWEAKNAME
+if [ -z "$tweakname" ]; then
 while
     printf 'Project Name: '
     read -r tweakname
     [ -z "$tweakname" ] && echo 'Nice try. Now name your project.'
 do true; done
+fi
 
 # GET IPA
+if [ -z "$ipadir" ]; then
 while
     printf 'Path to IPA: '
     read ipadir
     [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done
+fi
 
 # SET OUTPUT DIRECTORY
+if [ -z "$outdir" ]; then
 while
     printf 'Output Directory: '
     read outdir
     [ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
 do true; done
+fi
 
 # GET FILES
+if [ -z "$files" ]; then
 while
     printf 'Files or Tweak IDs: '
     read files
     [ -z "$files" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done
+fi
 
 # MAKE .TMP
 dir=$AZULE/Work
@@ -65,19 +104,27 @@ for i in $(echo $files ); do
 done
 
 # SPECIFY DYLIBS
-if [ -n "$(ls -A "$dir"/"$tweakname"/Tweak 2>/dev/null)" ]; then
-    export COLUMNS=1
-    dlb=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
-    echo 'Available Dylibs: '
-    PS3="Choose Dylibs (recommended): "
-    select i in "${dlb[@]}"; do
-        if [ "$i" = "Done" ]; then
-            break;
-        else
-            find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-            $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
-            chain+=( "$i" )
-        fi
+if [ -z "$dlb" ]; then
+    if [ -n "$(ls -A "$dir"/"$tweakname"/Tweak 2>/dev/null)" ]; then
+        export COLUMNS=1
+        dlb=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
+        echo 'Available Dylibs: '
+        PS3="Choose Dylibs (recommended): "
+        select i in "${dlb[@]}"; do
+            if [ "$i" = "Done" ]; then
+                break;
+            else
+                find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+                $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+                chain+=( "$i" )
+            fi
+        done
+    fi
+else
+    for i in "${dlb[@]}"; do
+        find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+        $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+        chain+=( "$i" )
     done
 fi
 
