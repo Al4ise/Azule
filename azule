@@ -1,7 +1,6 @@
 #!/bin/zsh
 
-while getopts n:i:o:f:d: args
-do
+while getopts n:i:o:f:d:h args; do
     case "$args" in
         n) tweakname=${OPTARG};;
         i) ipadir=${OPTARG};;
@@ -20,6 +19,16 @@ do
             done
             ;;
             
+        h)
+            echo "Usage: azule [-n Name] [-i path] [-f paths/bundleids] [-d name]"
+            echo "  -n     Specify the Project Name."
+            echo "  -i     Specify the path to the IPA you wish to patch."
+            echo "  -o     Specify an Output Directory."
+            echo "  -f     Specify the Files or Tweak Bundle IDs you wish to import."
+            echo "  -d     From the .deb files imported, specify the names of the dylibs(e.g: Cercube.dylib) you wish to inject."
+            echo
+            exit 1
+            ;;
     esac
 done
 # DECLARE $TWEAKNAME
