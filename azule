@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-while getopts n:i:o:f:d:h args; do
+while getopts n:i:o:f:d: args; do
     case "$args" in
         n) tweakname=${OPTARG};;
         i) ipadir=${OPTARG};;
@@ -19,7 +19,7 @@ while getopts n:i:o:f:d:h args; do
             done
             ;;
             
-        h)
+        *)
             echo "Usage: azule [-n Name] [-i path] [-f paths/bundleids] [-d name]"
             echo "  -n     Specify the Project Name."
             echo "  -i     Specify the path to the IPA you wish to patch."
