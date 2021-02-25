@@ -2,16 +2,26 @@
 
 while getopts n:i:o:f:d: args
 do
-    case "${args}" in
+    case "$args" in
         n) tweakname=${OPTARG};;
         i) ipadir=${OPTARG};;
         o) outdir=${OPTARG};;
-        f) files=${OPTARG};;
-        d) dlb=${OPTARG};;
+        f) files=("$OPTARG")
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                files+=($(eval "echo \${$OPTIND}"))
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
+        d) dlb=("$OPTARG")
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                dlb+=($(eval "echo \${$OPTIND}"))
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
     esac
 done
-
-echo "$dlb"
 # DECLARE $TWEAKNAME
 if [ -z "$tweakname" ]; then
 while
