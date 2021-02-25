@@ -20,12 +20,17 @@ while getopts n:i:o:f:d: args; do
             ;;
             
         *)
-            echo "Usage: azule [-n Name] [-i path] [-f paths/bundleids] [-d name]"
-            echo "  -n     Specify the Project Name."
-            echo "  -i     Specify the path to the IPA you wish to patch."
-            echo "  -o     Specify an Output Directory."
-            echo "  -f     Specify the Files or Tweak Bundle IDs you wish to import."
-            echo "  -d     From the .deb files imported, specify the names of the dylibs(e.g: Cercube.dylib) you wish to inject."
+            echo "Usage: azule [-n Name] [-i Path] [-o Path] [-f Paths/Bundle IDs] [-d Name]"
+            echo "  -n     Specify the project name."
+            echo "  -i     Specify the path to the IPA to patch."
+            echo "  -o     Specify an output directory."
+            echo "  -f     Specify the files or tweak Bundle IDs to import."
+            echo "  -d     From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject."
+            echo
+            echo "Examples:"
+            echo "  azule -n Foo -i ~/Downloads/Foo.ipa -o ~/Documents/ -f ~/Downloads/Foo.dylib ~/Downloads/Foo.bundle"
+            echo "  azule -n Foo -i ~/Downloads/Foo.ipa -o ~/Documents/ -f com.bar.foo -d Foo.dylib"
+            echo "  azule -n Foo -i ~/Downloads/Foo.ipa -o ~/Documents/ -f ~/Downloads/Foo.framework com.bar.foo -d Foo.dylib"
             echo
             exit 1
             ;;
