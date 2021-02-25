@@ -23,7 +23,13 @@ fi
 
 mkdir -p ~/azule/.tmp
 cd $AZULE
+
+getopts f args
+if [ ! -z "$tweakname" ]; then
+    git reset --hard HEAD
+fi
 git pull
+
 chmod +x insert_dylib
 chmod +x azule
 chmod +x Install
