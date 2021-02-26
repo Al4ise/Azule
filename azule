@@ -1,23 +1,25 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-while getopts n:i:o:f:d: args; do
+while getopts :n:i:o:f:d: args; do
     case "$args" in
-        n) tweakname="${OPTARG} "
+        n) tweakname="$OPTARG "
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-            tweakname+=$(eval "echo \${$OPTIND}")
-            OPTIND=$((OPTIND + 1))
+                tweakname+="$(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
             done
             ;;
             
-        i) ipadir=${OPTARG}
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-            ipadir+="$(eval "echo \${$OPTIND}")"
-            OPTIND=$((OPTIND + 1))
+        i) ipadir="${OPTARG}"
+                until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                ipadir+="$(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
             done
             ;;
             
-        o) outdir=${OPTARG};;
+        o) outdir=("$OPTARG")
+            OPTIND=$((OPTIND + 1));;
+            
         f) files=("$OPTARG")
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 files+=($(eval "echo \${$OPTIND}"))
@@ -161,4 +163,4 @@ done
 
 # WRAPPING UP
 eval "zip -rqX '$outdir/$tweakname.ipa' Payload"
-#rm -rf "$dir"
+rm -rf "$dir"
