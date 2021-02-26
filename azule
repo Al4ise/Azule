@@ -1,9 +1,22 @@
 #!/bin/zsh
 
+# ARGUEMENTS
 while getopts n:i:o:f:d: args; do
     case "$args" in
-        n) tweakname=${OPTARG};;
-        i) ipadir=${OPTARG};;
+        n) tweakname="${OPTARG} "
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+            tweakname+=$(eval "echo \${$OPTIND}")
+            OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
+        i) ipadir=${OPTARG}
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+            ipadir+="$(eval "echo \${$OPTIND}")"
+            OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
         o) outdir=${OPTARG};;
         f) files=("$OPTARG")
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
@@ -71,14 +84,13 @@ mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
 # EXTRACT IPA
-eval "unzip -q "$ipadir" -d "$dir/$tweakname""
+eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
 executable=(Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
-for i in $(echo $files ); do
+for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
-            *.deb) dpkg -x "$i" Tweak ;;
-            
+            *.deb) dpkg -x "$i" Tweak;;
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
                 $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
@@ -119,7 +131,7 @@ if [ -z "$dylibs" ]; then
     fi
 else
     for i in "${dylibs[@]}"; do
-        find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+        find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
         $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
         chain+=( "$i" )
     done
@@ -148,5 +160,5 @@ for i in "${chain[@]}"; do
 done
 
 # WRAPPING UP
-eval "zip -rqX "$outdir/$tweakname.ipa" Payload"
-rm -rf "$dir"
+eval "zip -rqX '$outdir/$tweakname.ipa' Payload"
+#rm -rf "$dir"
