@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-while getopts :n:i:o:f:d: args; do
+while getopts n:i:o:f:d: args; do
     case "$args" in
         n) tweakname="$OPTARG "
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
@@ -17,8 +17,12 @@ while getopts :n:i:o:f:d: args; do
             done
             ;;
             
-        o) outdir=("$OPTARG")
-            OPTIND=$((OPTIND + 1));;
+        o) outdir="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                outdir+="$(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
             
         f) files=("$OPTARG")
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
