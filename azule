@@ -67,9 +67,7 @@ do true; done; fi
 if [ -z "$ipadir" ]; then; while
     printf 'Path to IPA: '
     read ipa
-    for i in "${ipa[@]}"; do
-        ipadir+=$(eval "echo $i")
-    done
+    ipadir=$(eval "echo $ipa")
     [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done; fi
 
@@ -77,9 +75,7 @@ do true; done; fi
 if [ -z "$outdir" ]; then; while
     printf 'Output Directory: '
     read out
-    for i in "${out[@]}"; do
-        outdir+=$(eval "echo $i")
-    done
+    outdir=$(eval "echo $out")
     [ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
 do true; done; fi
 
@@ -87,9 +83,7 @@ do true; done; fi
 if [ -z "$files" ]; then; while
     printf 'Files or Tweak IDs: '
     read ff
-    for i in "${ff[@]}"; do
-        files+=$(eval "echo $i")
-    done
+    files=$(eval "echo $ff")
     [ -z "$files" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done; fi
 
