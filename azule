@@ -1,15 +1,35 @@
 #!/bin/zsh
 
+# ARGUEMENTS
 while getopts n:i:o:f:d: args; do
     case "$args" in
-        n) tweakname=${OPTARG};;
-        i) ipadir=${OPTARG};;
-        o) outdir=${OPTARG};;
-        f) files=("$OPTARG")
+        n) tweakname="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-                files+=($(eval "echo \${$OPTIND}"))
+                tweakname+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
+            ;;
+            
+        i) ipadir="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                ipadir+=" $(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
+        o) outdir="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                outdir+=" $(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
+        f) ff="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                ff+=" "$(eval "echo \${$OPTIND}")""
+                OPTIND=$((OPTIND + 1))
+            done
+            IFS=$'\n' files=( $(eval "echo $ff" | sed "s/, /\n/g") )
             ;;
             
         d) dylibs=("$OPTARG")
@@ -40,28 +60,31 @@ done
 # DECLARE $TWEAKNAME
 if [ -z "$tweakname" ]; then; while
     printf 'Project Name: '
-    read -r tweakname
+    read tweakname
     [ -z "$tweakname" ] && echo 'Nice try. Now name your project.'
 do true; done; fi
 
 # GET IPA
 if [ -z "$ipadir" ]; then; while
     printf 'Path to IPA: '
-    read ipadir
+    read ipa
+    ipadir=$(eval "echo $ipa")
     [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
 do true; done; fi
 
 # SET OUTPUT DIRECTORY
 if [ -z "$outdir" ]; then; while
     printf 'Output Directory: '
-    read outdir
+    read out
+    outdir=$(eval "echo $out")
     [ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
 do true; done; fi
 
 # GET FILES
 if [ -z "$files" ]; then; while
     printf 'Files or Tweak IDs: '
-    read files
+    read ff
+    IFS=$'\n' files=($(eval "echo $ff" | sed "s/, /\n/g"))
     [ -z "$files" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done; fi
 
@@ -71,14 +94,13 @@ mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
 # EXTRACT IPA
-eval "unzip -q "$ipadir" -d "$dir/$tweakname""
+eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
 executable=(Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
 
-for i in $(echo $files ); do
+for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
-            *.deb) dpkg -x "$i" Tweak ;;
-            
+            *.deb) dpkg -x "$i" Tweak;;
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
                 $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
@@ -119,7 +141,7 @@ if [ -z "$dylibs" ]; then
     fi
 else
     for i in "${dylibs[@]}"; do
-        find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+        find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
         $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
         chain+=( "$i" )
     done
@@ -129,8 +151,10 @@ fi
 find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
 
 # FIX LINKS
-frameworks+=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.framework') $AZULE/CydiaSubstrate.framework )
-for i in "${frameworks[@]}"; do
+rsync -a $AZULE/CydiaSubstrate.framework Payload/*.app/Frameworks
+chain+=( CydiaSubstrate.framework/CydiaSubstrate )
+
+find -E "$dir/$tweakname/Tweak" -iname '*.framework' | while read i; do
     rsync -a "$i" Payload/*.app/Frameworks
     chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
 done
@@ -148,5 +172,5 @@ for i in "${chain[@]}"; do
 done
 
 # WRAPPING UP
-eval "zip -rqX "$outdir/$tweakname.ipa" Payload"
+eval "zip -rqX '$outdir/$tweakname.ipa' Payload"
 rm -rf "$dir"
