@@ -64,7 +64,7 @@ while getopts :n:i:o:f:d:h args; do
             echo "  -h                       Print this help menu."
             echo
             echo "Examples:"
-            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
+            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib, ~/Foo.bundle"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
             exit 1
