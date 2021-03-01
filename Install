@@ -23,7 +23,7 @@ fi
 
 cd $AZULE
 
-while getopts "f h" args; do
+while getopts ":fh" args; do
     case "$args" in
         f)
             git reset --hard HEAD
