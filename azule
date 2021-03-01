@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-while getopts n:i:o:f:d: args; do
+while getopts :n:i:o:f:d:h args; do
     case "$args" in
         n) tweakname="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
@@ -39,19 +39,38 @@ while getopts n:i:o:f:d: args; do
             done
             ;;
             
-        *)
-            echo "Usage: azule [-n Name] [-i Path] [-o Path] [-f Paths/Bundle IDs] [-d Name]"
-            echo "  -n     Specify the project name."
-            echo "  -i     Specify the path to the IPA to patch."
-            echo "  -o     Specify an output directory."
-            echo "  -f     Specify the files or tweak Bundle IDs to import."
-            echo "  -d     From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject."
+        h)
+            echo "Usage: azule [options]"
+            echo
+            echo "Running the command without any arguments will enter GUI mode."
+            echo
+            echo "GUI mode usage: "
+            echo "1. Run azule in any terminal window to initialize"
+            echo "2. Provide your project's name"
+            echo "3. Provide the path to a \u001b[1mdecrypted\u001b[0m IPA of the app you are trying to modify."
+            echo "\u001b[1mEncrypted IPAs don't work\u001b[0m"
+            echo "4. When asked for Files or Tweak Bundle IDs, you can either provide the local"
+            echo "paths to the files you wish to inject or type the Bundle IDs of the tweaks"
+            echo "(This only works if the tweaks can be found on Parcility)"
+            echo "5. If you provided a tweak, choose the dylibs to inject"
+            echo "(You can choose not to inject any dylibs)"
+            echo
+            echo "Options:"
+            echo "  -n [Name]                Specify the project name."
+            echo "  -i [Path]                Specify the path to the IPA to patch."
+            echo "  -o [Path]                Specify an output directory."
+            echo "  -f [Paths/Bundle IDs]    Specify the files or tweak Bundle IDs to import."
+            echo "  -d [Names]               From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject."
+            echo "  -h                       Print this help menu."
             echo
             echo "Examples:"
-            echo "  azule -n Foo -i ~/Downloads/Foo.ipa -o ~/Documents/ -f ~/Downloads/Foo.dylib ~/Downloads/Foo.bundle"
-            echo "  azule -n Foo -i ~/Downloads/Foo.ipa -o ~/Documents/ -f com.bar.foo -d Foo.dylib"
-            echo "  azule -n Foo -i ~/Downloads/Foo.ipa -o ~/Documents/ -f ~/Downloads/Foo.framework com.bar.foo -d Foo.dylib"
-            echo
+            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
+            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
+            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
+            exit 1
+            ;;
+        *)
+            echo 'Invalid argument. Run "azule -h" to print the help menu.'
             exit 1
             ;;
     esac
@@ -59,33 +78,33 @@ done
 
 # DECLARE $TWEAKNAME
 if [ -z "$tweakname" ]; then; while
-    printf 'Project Name: '
+    printf '\u001b[38;5;27;1mProject Name:\u001b[0m '
     read tweakname
-    [ -z "$tweakname" ] && echo 'Nice try. Now name your project.'
+    [ -z "$tweakname" ] && echo "\u001b[31;1mNice try. Now name your project.\u001b[0m"
 do true; done; fi
 
 # GET IPA
 if [ -z "$ipadir" ]; then; while
-    printf 'Path to IPA: '
+    printf '\u001b[38;5;27;1mPath to IPA:\u001b[0m '
     read ipa
     ipadir=$(eval "echo $ipa")
-    [ -z "$ipadir" ] && echo 'I kind of need the IPA to make your app...'
+    [ -z "$ipadir" ] && echo "\u001b[31;1mI need the IPA to make your app.\u001b[0m"
 do true; done; fi
 
 # SET OUTPUT DIRECTORY
 if [ -z "$outdir" ]; then; while
-    printf 'Output Directory: '
+    printf '\u001b[38;5;27;1mOutput Directory:\u001b[0m '
     read out
     outdir=$(eval "echo $out")
-    [ -z "$outdir" ] && echo 'What am I supposed to do with your app then?'
+    [ -z "$outdir" ] && echo "\u001b[31;1mI don't want to keep the app for myself.\u001b[0m"
 do true; done; fi
 
 # GET FILES
 if [ -z "$files" ]; then; while
-    printf 'Files or Tweak IDs: '
+    printf '\u001b[38;5;27;1mFiles or Tweak IDs:\u001b[0m '
     read ff
     IFS=$'\n' files=($(eval "echo $ff" | sed "s/, /\n/g"))
-    [ -z "$files" ] && echo 'You want me to not touch your app? Impossible.'
+    [ -z "$files" ] && echo "\u001b[31;1mIf you don't want to inject anything, then just use the IPA you gave me.\u001b[0m"
 do true; done; fi
 
 # MAKE .TMP
@@ -118,7 +137,7 @@ for i in "${files[@]}"; do
         if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
            dpkg -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") "$dir"/"$tweakname"/Tweak
         else
-            echo ""$i" isn't available on Parcility. Try manually getting the files to inject."
+            echo "\u001b[31;1m"$i" isn't available on Parcility. Try getting the files manually.\u001b[0m"
         fi
     fi
 done
@@ -129,7 +148,7 @@ if [ -z "$dylibs" ]; then
         export COLUMNS=1
         dylibs=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
         echo 'Available Dylibs: '
-        PS3="Choose Dylibs (recommended): "
+        PS3="\u001b[38;5;27;1mChoose Dylibs (recommended):\u001b[0m "
         select i in "${dylibs[@]}"; do
             if [ "$i" = "Done" ]; then; break
             else
