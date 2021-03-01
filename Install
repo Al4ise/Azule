@@ -21,14 +21,32 @@ if [ $? != 0 ]; then
     xcode-select --install
 fi
 
-mkdir -p ~/azule/.tmp
 cd $AZULE
 
-getopts f args
-if [ ! -z "$args" ]; then
-    git reset --hard HEAD
-fi
-git pull
+while getopts :f:h args; do
+    case "$args" in
+        f)
+            git reset --hard HEAD
+            ;;
+        h)
+            echo "Usage: update-azule [options]"
+            echo
+            echo "Running the command without any arguments will update Azule normally. If"
+            echo "you have made changes to any of Azule's files, the update will be cancelled."
+            echo
+            echo "Options:"
+            echo "  -f     Forcefully update Azule, causing all local changes to be lost."
+            echo "  -h     Print this help menu."
+            exit 1
+            ;;
+        *)
+            echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
+            exit 1
+            ;;
+    esac
+done
+
+git pull -q
 
 chmod +x insert_dylib
 chmod +x azule
@@ -37,7 +55,7 @@ chmod +x Uninstall
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]; then
-    ln -s $AZULE/install /usr/local/bin/update-azule
+    ln -s $AZULE/Install /usr/local/bin/update-azule
 fi
 
 # AZULE GLOBAL COMMAND
@@ -51,6 +69,7 @@ if [ -d CydiaSubstrate.framework ]; then
 fi
 
 # INSTALL SUBSTRATE
+mkdir -p ~/azule/.tmp
 cd .tmp
 curl -s -Lo substrate.deb "$(curl -s 'https://api.parcility.co/db/package/mobilesubstrate/saurik' | jq -r '.data.repo.url + .data.builds[-1].Filename')"
 ar -x substrate.deb data.tar.lzma
