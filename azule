@@ -24,11 +24,12 @@ while getopts n:i:o:f:d: args; do
             done
             ;;
             
-        f) files=("$OPTARG")
+        f) ff="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-                files+=($(eval "echo \${$OPTIND}"))
+                ff+=" "$(eval "echo \${$OPTIND}")""
                 OPTIND=$((OPTIND + 1))
             done
+            IFS=$'\n' files=( $(eval "echo $ff" | sed "s/, /\n/g") )
             ;;
             
         d) dylibs=("$OPTARG")
@@ -83,7 +84,7 @@ do true; done; fi
 if [ -z "$files" ]; then; while
     printf 'Files or Tweak IDs: '
     read ff
-    files=$(eval "echo $ff")
+    IFS=$'\n' files=($(eval "echo $ff" | sed "s/, /\n/g"))
     [ -z "$files" ] && echo 'You want me to not touch your app? Impossible.'
 do true; done; fi
 
