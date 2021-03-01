@@ -25,9 +25,8 @@ cd $AZULE
 
 while getopts ":fh" args; do
     case "$args" in
-        f)
-            git reset --hard HEAD
-            ;;
+        f) git reset --hard HEAD >> /dev/null ;;
+        
         h)
             echo "Usage: update-azule [options]"
             echo
@@ -39,7 +38,9 @@ while getopts ":fh" args; do
             echo "  -h     Print this help menu."
             exit 1
             ;;
+            
         *)
+        
             echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
             exit 1
             ;;
