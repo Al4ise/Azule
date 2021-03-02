@@ -147,8 +147,8 @@ if [ -z "$dylibs" ]; then
     if [ -n "$(ls -A "$dir"/"$tweakname"/Tweak 2>/dev/null)" ]; then
         export COLUMNS=1
         dylibs=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
-        echo 'Available Dylibs: '
-        PS3="\u001b[38;5;27;1mChoose Dylibs (recommended):\u001b[0m "
+        echo $'\u001b[38;5;27;1mAvailable Dylibs: \u001b[0m'
+        PS3=$'\u001b[38;5;27;1mChoose Dylibs (recommended): \u001b[0m'
         select i in "${dylibs[@]}"; do
             if [ "$i" = "Done" ]; then; break
             else
