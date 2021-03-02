@@ -80,14 +80,14 @@ done
 if [ -z "$name" ]; then; while
     printf '\u001b[38;5;27;1mProject Name:\u001b[0m '
     read name
-    [ -z "$tweakname" ] && echo "\u001b[31;1mNice try. Now name your project.\u001b[0m"
+    [ -z "$name" ] && echo "\u001b[31;1mNice try. Now name your project.\u001b[0m"
 do true; done; fi
 
 # GET IPA
 if [ -z "$ipadir" ]; then; while
     printf '\u001b[38;5;27;1mPath to IPA:\u001b[0m '
     read ipa
-    ipadir=$(eval "echo $ipa")
+    ipadir=$(eval "echo \$ipa")
     [ -z "$ipadir" ] && echo "\u001b[31;1mI need the IPA to make your app.\u001b[0m"
 do true; done; fi
 
