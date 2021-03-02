@@ -70,8 +70,16 @@ while getopts :n:i:o:f:d:h args; do
             exit 1
             ;;
         *)
-            echo 'Invalid argument. Run "azule -h" to print the help menu.'
-            exit 1
+            # SWITCHES
+            while getopts ":u" args; do
+                case "$args" in
+                    u) switches+=u ;;
+                esac
+            done
+            if [ "$switches" = "null" ]; then
+                echo 'Invalid argument. Run "azule -h" to print the help menu.'
+                exit 1
+            fi
             ;;
     esac
 done
@@ -196,6 +204,10 @@ for i in "${chain[@]}"; do
         done
     done
 done
+
+if [[ "$switches" =~ "u" ]]; then
+    plutil -remove UISupportedDevices Payload/*.app/Info.plist >> /dev/null
+fi
 
 # WRAPPING UP
 eval "zip -rqX '$output/$tweakname.ipa' Payload"
