@@ -3,9 +3,9 @@
 # ARGUEMENTS
 while getopts :n:i:o:f:d:h args; do
     case "$args" in
-        n) tweakname="$OPTARG"
+        n) name="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-                tweakname+=" $(eval "echo \${$OPTIND}")"
+                name+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
             ;;
@@ -76,10 +76,10 @@ while getopts :n:i:o:f:d:h args; do
     esac
 done
 
-# DECLARE $TWEAKNAME
-if [ -z "$tweakname" ]; then; while
+# DECLARE $NAME
+if [ -z "$name" ]; then; while
     printf '\u001b[38;5;27;1mProject Name:\u001b[0m '
-    read tweakname
+    read name
     [ -z "$tweakname" ] && echo "\u001b[31;1mNice try. Now name your project.\u001b[0m"
 do true; done; fi
 
@@ -91,7 +91,7 @@ if [ -z "$ipadir" ]; then; while
     [ -z "$ipadir" ] && echo "\u001b[31;1mI need the IPA to make your app.\u001b[0m"
 do true; done; fi
 
-# SET OUTPUT DIRECTORY
+# OUTPUT DIRECTORY
 if [ -z "$outdir" ]; then; while
     printf '\u001b[38;5;27;1mOutput Directory:\u001b[0m '
     read out
@@ -107,7 +107,14 @@ if [ -z "$files" ]; then; while
     [ -z "$files" ] && echo "\u001b[31;1mIf you don't want to inject anything, then just use the IPA you gave me.\u001b[0m"
 do true; done; fi
 
-# MAKE .TMP
+# OUTPUT DIRECTORY #2
+tweakname=$(basename "$name")
+output=$(echo "$outdir/$name" | sed "s/"$tweakname"//g")
+if ! [[ -d "$output" ]]; then
+    mkdir -p "$output"
+fi
+
+# .TMP DIRECTORIES
 dir=$AZULE/Work
 mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
@@ -191,5 +198,5 @@ for i in "${chain[@]}"; do
 done
 
 # WRAPPING UP
-eval "zip -rqX '$outdir/$tweakname.ipa' Payload"
+eval "zip -rqX '$output/$tweakname.ipa' Payload"
 rm -rf "$dir"
