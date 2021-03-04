@@ -1,7 +1,9 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-while getopts :n:i:o:f:d:h:u args; do
+v=">> /dev/null"
+
+while getopts :n:i:o:f:d:h:uv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -44,10 +46,8 @@ while getopts :n:i:o:f:d:h:u args; do
             done
             ;;
             
-        u) 
-            u=1
-            OPTIND=$((OPTIND + 1)) ###idk if its needed
-        ;;
+        u) u=1 ;;
+        v) unset v ;;
         
         h)
             echo "Usage: azule [options]"
@@ -139,7 +139,7 @@ for i in "${files[@]}"; do
             *.deb) dpkg -x "$i" Tweak;;
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
+                $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" $v
                 chain+=( $(basename "$i") )
                 ;;
 
@@ -170,7 +170,7 @@ if [ -z "$dylibs" ]; then
             if [ "$i" = "Done" ]; then; break
             else
                 find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+                $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
                 chain+=( "$i" )
             fi
         done
@@ -178,7 +178,7 @@ if [ -z "$dylibs" ]; then
 else
     for i in "${dylibs[@]}"; do
         find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
-        $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+        $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
         chain+=( "$i" )
     done
 fi
@@ -208,7 +208,7 @@ for i in "${chain[@]}"; do
 done
 
 if [ -z "$u" ]; then
-    plutil -remove UISupportedDevices Payload/*.app/Info.plist >> /dev/null
+    plutil -remove UISupportedDevices Payload/*.app/Info.plist $v
 fi
 
 # WRAPPING UP
