@@ -44,7 +44,10 @@ while getopts :n:i:o:f:d:h:u args; do
             done
             ;;
             
-        u) u=1 ;;
+        u) 
+            u=1
+            OPTIND=$((OPTIND + 1)) ###idk if its needed
+        ;;
         
         h)
             echo "Usage: azule [options]"
@@ -77,7 +80,6 @@ while getopts :n:i:o:f:d:h:u args; do
             exit 1
             ;;
         *)
-            # SWITCHES
             echo 'Invalid argument. Run "azule -h" to print the help menu.'
             exit 1
             ;;
