@@ -3,7 +3,7 @@
 # ARGUEMENTS
 v=">> /dev/null"
 
-while getopts :n:i:o:f:d:h:uv args; do
+while getopts :n:i:o:f:d:huv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -208,7 +208,7 @@ for i in "${chain[@]}"; do
 done
 
 if [ -z "$u" ]; then
-    plutil -remove UISupportedDevices Payload/*.app/Info.plist $v
+    /usr/libexec/PlistBuddy -c 'Delete :UISupportedDevices' Payload/*.app/Info.plist $v
 fi
 
 # WRAPPING UP
