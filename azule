@@ -1,44 +1,53 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-while getopts :n:i:o:f:d:h args; do
+v=">> /dev/null"
+while getopts :n:i:o:f:d:huv args; do
     case "$args" in
-        n) tweakname="$OPTARG"
+        n)
+            name="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-                tweakname+=" $(eval "echo \${$OPTIND}")"
+                name+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
             ;;
             
-        i) ipadir="$OPTARG"
+        i)
+            ipadir="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 ipadir+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
             ;;
             
-        o) outdir="$OPTARG"
+        o)
+            outdir="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 outdir+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
             ;;
             
-        f) ff="$OPTARG"
+        f)
+            ff="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 ff+=" "$(eval "echo \${$OPTIND}")""
                 OPTIND=$((OPTIND + 1))
             done
-            IFS=$'\n' files=( $(eval "echo $ff" | sed "s/, /\n/g") )
+            (){ local IFS=$'\n'; files=( $(eval "echo $ff" | sed "s/, /\n/g") ); }
             ;;
             
-        d) dylibs=("$OPTARG")
+        d)
+            dylibs=("$OPTARG")
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 dylibs+=($(eval "echo \${$OPTIND}"))
                 OPTIND=$((OPTIND + 1))
             done
             ;;
             
+        u) u=1 ;;
+        v) unset v ;;
+        
         h)
             echo "Usage: azule [options]"
             echo
@@ -76,22 +85,22 @@ while getopts :n:i:o:f:d:h args; do
     esac
 done
 
-# DECLARE $TWEAKNAME
-if [ -z "$tweakname" ]; then; while
+# DECLARE $NAME
+if [ -z "$name" ]; then; while
     printf '\u001b[38;5;27;1mProject Name:\u001b[0m '
-    read tweakname
-    [ -z "$tweakname" ] && echo "\u001b[31;1mNice try. Now name your project.\u001b[0m"
+    read name
+    [ -z "$name" ] && echo "\u001b[31;1mNice try. Now name your project.\u001b[0m"
 do true; done; fi
 
 # GET IPA
 if [ -z "$ipadir" ]; then; while
     printf '\u001b[38;5;27;1mPath to IPA:\u001b[0m '
     read ipa
-    ipadir=$(eval "echo $ipa")
+    ipadir=$(eval "echo \$ipa")
     [ -z "$ipadir" ] && echo "\u001b[31;1mI need the IPA to make your app.\u001b[0m"
 do true; done; fi
 
-# SET OUTPUT DIRECTORY
+# OUTPUT DIRECTORY
 if [ -z "$outdir" ]; then; while
     printf '\u001b[38;5;27;1mOutput Directory:\u001b[0m '
     read out
@@ -103,18 +112,25 @@ do true; done; fi
 if [ -z "$files" ]; then; while
     printf '\u001b[38;5;27;1mFiles or Tweak IDs:\u001b[0m '
     read ff
-    IFS=$'\n' files=($(eval "echo $ff" | sed "s/, /\n/g"))
+    (){ local IFS=$'\n'; files=( $(eval "echo $ff" | sed "s/, /\n/g") ); }
     [ -z "$files" ] && echo "\u001b[31;1mIf you don't want to inject anything, then just use the IPA you gave me.\u001b[0m"
 do true; done; fi
 
-# MAKE .TMP
+# OUTPUT DIRECTORY #2
+tweakname=$(basename "$name")
+output=$(echo "$outdir/$name" | sed "s/"$tweakname"//g")
+if ! [[ -d "$output" ]]; then
+    mkdir -p "$output"
+fi
+
+# .TMP DIRECTORIES
 dir=$AZULE/Work
 mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
 # EXTRACT IPA
 eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
-executable=(Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
+executable=(Payload/*.app/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p"))
 
 for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
@@ -122,13 +138,13 @@ for i in "${files[@]}"; do
             *.deb) dpkg -x "$i" Tweak;;
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
+                insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" $v
                 chain+=( $(basename "$i") )
                 ;;
 
             *.framework)
                 rsync -a "$i" Payload/*.app/Frameworks
-                chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
+                chain+=( "$(basename "$i")/$(plutil -extract CFBundleExecutable xml1 -o - "$i"/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
                 ;;
             
             *) rsync -a "$i" Payload/*.app ;;
@@ -147,13 +163,13 @@ if [ -z "$dylibs" ]; then
     if [ -n "$(ls -A "$dir"/"$tweakname"/Tweak 2>/dev/null)" ]; then
         export COLUMNS=1
         dylibs=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
-        echo 'Available Dylibs: '
-        PS3="\u001b[38;5;27;1mChoose Dylibs (recommended):\u001b[0m "
+        echo $'\u001b[38;5;27;1mAvailable Dylibs: \u001b[0m'
+        PS3=$'\u001b[38;5;27;1mChoose Dylibs (recommended): \u001b[0m'
         select i in "${dylibs[@]}"; do
             if [ "$i" = "Done" ]; then; break
             else
                 find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+                insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
                 chain+=( "$i" )
             fi
         done
@@ -161,7 +177,7 @@ if [ -z "$dylibs" ]; then
 else
     for i in "${dylibs[@]}"; do
         find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
-        $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+        insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
         chain+=( "$i" )
     done
 fi
@@ -175,7 +191,8 @@ chain+=( CydiaSubstrate.framework/CydiaSubstrate )
 
 find -E "$dir/$tweakname/Tweak" -iname '*.framework' | while read i; do
     rsync -a "$i" Payload/*.app/Frameworks
-    chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
+    
+    chain+=( "$(basename "$i")/$(plutil -extract CFBundleExecutable xml1 -o - "$i"/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
 done
 
 for i in "${chain[@]}"; do
@@ -183,6 +200,7 @@ for i in "${chain[@]}"; do
     links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
     for u in "${links[@]}"; do
         for x in "${chain[@]}"; do
+        ### IF FOUND, BREAK
             if [[ "$u" =~ "$x" ]]; then
                 install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
             fi
@@ -190,6 +208,10 @@ for i in "${chain[@]}"; do
     done
 done
 
+if [ -z "$u" ]; then
+    plutil -remove UISupportedDevices Payload/*.app/Info.plist $v
+fi
+
 # WRAPPING UP
-eval "zip -rqX '$outdir/$tweakname.ipa' Payload"
+eval "zip -rqX '$output/$tweakname.ipa' Payload"
 rm -rf "$dir"
