@@ -34,7 +34,7 @@ while getopts :n:i:o:f:d:huv args; do
                 ff+=" "$(eval "echo \${$OPTIND}")""
                 OPTIND=$((OPTIND + 1))
             done
-            IFS=$'\n' files=( $(eval "echo $ff" | sed "s/, /\n/g") )
+            (){ local IFS=$'\n'; files=( $(eval "echo $ff" | sed "s/, /\n/g") ); }
             ;;
             
         d)
@@ -112,7 +112,7 @@ do true; done; fi
 if [ -z "$files" ]; then; while
     printf '\u001b[38;5;27;1mFiles or Tweak IDs:\u001b[0m '
     read ff
-    IFS=$'\n' files=($(eval "echo $ff" | sed "s/, /\n/g"))
+    (){ local IFS=$'\n'; files=( $(eval "echo $ff" | sed "s/, /\n/g") ); }
     [ -z "$files" ] && echo "\u001b[31;1mIf you don't want to inject anything, then just use the IPA you gave me.\u001b[0m"
 do true; done; fi
 
@@ -138,7 +138,7 @@ for i in "${files[@]}"; do
             *.deb) dpkg -x "$i" Tweak;;
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" $v
+                insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" $v
                 chain+=( $(basename "$i") )
                 ;;
 
@@ -169,7 +169,7 @@ if [ -z "$dylibs" ]; then
             if [ "$i" = "Done" ]; then; break
             else
                 find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
+                insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
                 chain+=( "$i" )
             fi
         done
@@ -177,7 +177,7 @@ if [ -z "$dylibs" ]; then
 else
     for i in "${dylibs[@]}"; do
         find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
-        $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
+        insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
         chain+=( "$i" )
     done
 fi
