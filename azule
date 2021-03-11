@@ -2,7 +2,6 @@
 
 # ARGUEMENTS
 v=">> /dev/null"
-
 while getopts :n:i:o:f:d:huv args; do
     case "$args" in
         n)
@@ -131,7 +130,7 @@ cd "$dir"/"$tweakname"
 
 # EXTRACT IPA
 eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
-executable=(Payload/*.app/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" Payload/*.app/Info.plist))
+executable=(Payload/*.app/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p"))
 
 for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
@@ -145,7 +144,7 @@ for i in "${files[@]}"; do
 
             *.framework)
                 rsync -a "$i" Payload/*.app/Frameworks
-                chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
+                chain+=( "$(basename "$i")/$(plutil -extract CFBundleExecutable xml1 -o - "$i"/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
                 ;;
             
             *) rsync -a "$i" Payload/*.app ;;
@@ -192,7 +191,8 @@ chain+=( CydiaSubstrate.framework/CydiaSubstrate )
 
 find -E "$dir/$tweakname/Tweak" -iname '*.framework' | while read i; do
     rsync -a "$i" Payload/*.app/Frameworks
-    chain+=( "$(basename "$i")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$i"/Info.plist)" )
+    
+    chain+=( "$(basename "$i")/$(plutil -extract CFBundleExecutable xml1 -o - "$i"/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
 done
 
 for i in "${chain[@]}"; do
@@ -200,6 +200,7 @@ for i in "${chain[@]}"; do
     links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
     for u in "${links[@]}"; do
         for x in "${chain[@]}"; do
+        ### IF FOUND, BREAK
             if [[ "$u" =~ "$x" ]]; then
                 install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
             fi
@@ -208,7 +209,7 @@ for i in "${chain[@]}"; do
 done
 
 if [ -z "$u" ]; then
-    /usr/libexec/PlistBuddy -c 'Delete :UISupportedDevices' Payload/*.app/Info.plist $v
+    plutil -remove UISupportedDevices Payload/*.app/Info.plist $v
 fi
 
 # WRAPPING UP
