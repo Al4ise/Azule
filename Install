@@ -6,6 +6,12 @@ if [[ $? != 0 ]] ; then
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 fi
 
+which -s insert_dylib >> /dev/null
+if [[ $? != 0 ]] ; then
+    curl -sL -o /usr/local/bin/insert_dylib "$(curl -s https://api.github.com/repos/Al4ise/insert_dylib/releases/latest | jq -r '.assets[].browser_download_url')"
+    chmod +x /usr/local/bin/insert_dylib
+fi
+
 # CHECK IF ADDITIONAL REQUIREMENTS EXIST
 dependencies=('jq' 'dpkg')
 for i in "${dependencies[@]}"; do
