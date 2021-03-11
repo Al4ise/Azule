@@ -55,7 +55,6 @@ done
 
 git pull -q
 
-chmod +x insert_dylib
 chmod +x azule
 chmod +x Install
 chmod +x Uninstall
