@@ -1,7 +1,6 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-v=">> /dev/null"
 while getopts :n:i:o:f:d:huv args; do
     case "$args" in
         n)
@@ -46,7 +45,6 @@ while getopts :n:i:o:f:d:huv args; do
             ;;
             
         u) u=1 ;;
-        v) unset v ;;
         
         h)
             echo "Usage: azule [options]"
@@ -138,7 +136,7 @@ for i in "${files[@]}"; do
             *.deb) dpkg -x "$i" Tweak;;
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
-                insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" $v
+                insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
                 chain+=( $(basename "$i") )
                 ;;
 
@@ -169,7 +167,7 @@ if [ -z "$dylibs" ]; then
             if [ "$i" = "Done" ]; then; break
             else
                 find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-                insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
+                insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
                 chain+=( "$i" )
             fi
         done
@@ -177,7 +175,7 @@ if [ -z "$dylibs" ]; then
 else
     for i in "${dylibs[@]}"; do
         find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
-        insert_dylib --inplace --all-yes "@rpath/$i" "$executable" $v
+        insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
         chain+=( "$i" )
     done
 fi
@@ -200,16 +198,16 @@ for i in "${chain[@]}"; do
     links=( $(otool -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
     for u in "${links[@]}"; do
         for x in "${chain[@]}"; do
-        ### IF FOUND, BREAK
             if [[ "$u" =~ "$x" ]]; then
                 install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
             fi
+            break
         done
     done
 done
 
 if [ -z "$u" ]; then
-    plutil -remove UISupportedDevices Payload/*.app/Info.plist $v
+    plutil -remove UISupportedDevices Payload/*.app/Info.plist >> /dev/null
 fi
 
 # WRAPPING UP
