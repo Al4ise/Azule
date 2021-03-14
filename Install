@@ -27,8 +27,8 @@ if [[ $? != 0 ]] ; then
     chmod +x /usr/local/bin/insert_dylib
 fi
 
-mkdir -p /Library/azule
-cd /Library/azule
+mkdir -p $AZULE
+cd $AZULE
 
 while getopts ":fh" args; do
     case "$args" in
@@ -62,12 +62,12 @@ chmod +x Uninstall
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]; then
-    ln -s /Library/azule/Install /usr/local/bin/update-azule
+    ln -s $AZULE/Install /usr/local/bin/update-azule
 fi
 
 # AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/azule ]; then
-    ln -s /Library/azule/azule /usr/local/bin/azule
+    ln -s $AZULE/azule /usr/local/bin/azule
 fi
 
 # REMOVE OLD SUBSTRATE
@@ -80,9 +80,9 @@ mkdir -p ~/azule/.tmp
 cd .tmp
 curl -s -Lo substrate.deb "$(curl -s 'https://api.parcility.co/db/package/mobilesubstrate/saurik' | jq -r '.data.repo.url + .data.builds[-1].Filename')"
 ar -x substrate.deb data.tar.lzma
-tar -C /Library/azule --lzma --strip-components 3 -xf data.tar.lzma ./Library/Frameworks/CydiaSubstrate.framework
-plutil -convert binary1 "/Library/azule/CydiaSubstrate.framework/Info.plist" || true
-rm -rf "/Library/azule/CydiaSubstrate.framework/Libraries" "/Library/azule/CydiaSubstrate.framework/Commands"
+tar -C $AZULE --lzma --strip-components 3 -xf data.tar.lzma ./Library/Frameworks/CydiaSubstrate.framework
+plutil -convert binary1 "$AZULE/CydiaSubstrate.framework/Info.plist" || true
+rm -rf "$AZULE/CydiaSubstrate.framework/Libraries" "$AZULE/CydiaSubstrate.framework/Commands"
 
 # CLEANUP
-rm -rf /Library/azule/.tmp
+rm -rf $AZULE/.tmp
