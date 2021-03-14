@@ -26,7 +26,6 @@ git clone --recursive https://github.com/Al4ise/Azule
 
 Setup Azule:
 ```zsh
-git clone --recursive https://github.com/Al4ise/Azule
 chmod +x Azule/update-azule
 Azule/update-azule
 ```
