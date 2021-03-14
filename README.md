@@ -19,13 +19,7 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 * [Xcode](https://apps.apple.com/us/app/xcode/id497799835)
 
 ## Installation
-1. Set the $AZULE environment variable:
-```zsh
-echo "export AZULE=~/azule" >> ~/.zprofile
-```
-**Note:** For the change to take effect, you have to restart your terminal.
-
-2. Clone and Setup Azule
+Clone and Setup Azule
 ```zsh
 git clone --recursive https://github.com/Al4ise/Azule $AZULE
 chmod +x $AZULE/install
