@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-while getopts :n:i:o:f:d:huv args; do
+while getopts :n:i:o:f:d:hu args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -52,15 +52,15 @@ while getopts :n:i:o:f:d:huv args; do
             echo "Running the command without any arguments will enter GUI mode."
             echo
             echo "GUI mode usage: "
-            echo "1. Run azule in any terminal window to initialize"
-            echo "2. Provide your project's name"
-            echo "3. Provide the path to a \u001b[1mdecrypted\u001b[0m IPA of the app you are trying to modify."
-            echo "\u001b[1mEncrypted IPAs don't work\u001b[0m"
-            echo "4. When asked for Files or Tweak Bundle IDs, you can either provide the local"
-            echo "paths to the files you wish to inject or type the Bundle IDs of the tweaks"
-            echo "(This only works if the tweaks can be found on Parcility)"
-            echo "5. If you provided a tweak, choose the dylibs to inject"
-            echo "(You can choose not to inject any dylibs)"
+            echo "  1. Run azule in any terminal window to initialize"
+            echo "  2. Provide your project's name"
+            echo "  3. Provide the path to a \u001b[1mdecrypted\u001b[0m IPA of the app you are trying to modify."
+            echo "  \u001b[1mEncrypted IPAs don't work\u001b[0m"
+            echo "  4. When asked for Files or Tweak Bundle IDs, you can either provide the local"
+            echo "  paths to the files you wish to inject or type the Bundle IDs of the tweaks"
+            echo "  (This only works if the tweaks can be found on Parcility)"
+            echo "  5. If you provided a tweak, choose the dylibs to inject"
+            echo "  (You can choose not to inject any dylibs)"
             echo
             echo "Options:"
             echo "  -n [Name]                Specify the project name."
@@ -69,6 +69,7 @@ while getopts :n:i:o:f:d:huv args; do
             echo "  -f [Paths/Bundle IDs]    Specify the files or tweak Bundle IDs to import."
             echo "  -d [Names]               From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject."
             echo "  -h                       Print this help menu."
+            echo "  -u                       Remove UISupportedDevices from Info.plist"
             echo
             echo "Examples:"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib, ~/Foo.bundle"
@@ -85,9 +86,9 @@ done
 
 # DECLARE $NAME
 if [ -z "$name" ]; then; while
-    printf '\u001b[38;5;27;1mProject Name:\u001b[0m '
+    printf 'Project Name: '
     read name
-    [ -z "$name" ] && echo "\u001b[31;1mNice try. Now name your project.\u001b[0m"
+    [ -z "$name" ] && echo "Nice try. Now name your project."
 do true; done; fi
 
 # GET IPA
@@ -95,23 +96,23 @@ if [ -z "$ipadir" ]; then; while
     printf '\u001b[38;5;27;1mPath to IPA:\u001b[0m '
     read ipa
     ipadir=$(eval "echo \$ipa")
-    [ -z "$ipadir" ] && echo "\u001b[31;1mI need the IPA to make your app.\u001b[0m"
+    [ -z "$ipadir" ] && echo "I need the IPA to make your app."
 do true; done; fi
 
 # OUTPUT DIRECTORY
 if [ -z "$outdir" ]; then; while
-    printf '\u001b[38;5;27;1mOutput Directory:\u001b[0m '
+    printf 'Output Directory: '
     read out
     outdir=$(eval "echo $out")
-    [ -z "$outdir" ] && echo "\u001b[31;1mI don't want to keep the app for myself.\u001b[0m"
+    [ -z "$outdir" ] && echo "I don't want to keep the app for myself."
 do true; done; fi
 
 # GET FILES
 if [ -z "$files" ]; then; while
-    printf '\u001b[38;5;27;1mFiles or Tweak IDs:\u001b[0m '
+    printf 'Files or Tweak IDs: '
     read ff
     (){ local IFS=$'\n'; files=( $(eval "echo $ff" | sed "s/, /\n/g") ); }
-    [ -z "$files" ] && echo "\u001b[31;1mIf you don't want to inject anything, then just use the IPA you gave me.\u001b[0m"
+    [ -z "$files" ] && echo "If you don't want to inject anything, then just use the IPA you gave me."
 do true; done; fi
 
 # OUTPUT DIRECTORY #2
@@ -122,7 +123,7 @@ if ! [[ -d "$output" ]]; then
 fi
 
 # .TMP DIRECTORIES
-dir=$AZULE/Work
+dir=/Library/azule/Work
 mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
@@ -161,8 +162,8 @@ if [ -z "$dylibs" ]; then
     if [ -n "$(ls -A "$dir"/"$tweakname"/Tweak 2>/dev/null)" ]; then
         export COLUMNS=1
         dylibs=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib' -exec basename {} \;) 'Done' )
-        echo $'\u001b[38;5;27;1mAvailable Dylibs: \u001b[0m'
-        PS3=$'\u001b[38;5;27;1mChoose Dylibs (recommended): \u001b[0m'
+        echo $'Available Dylibs: '
+        PS3=$'Choose Dylibs (recommended): '
         select i in "${dylibs[@]}"; do
             if [ "$i" = "Done" ]; then; break
             else
@@ -184,7 +185,7 @@ fi
 find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
 
 # FIX LINKS
-rsync -a $AZULE/CydiaSubstrate.framework Payload/*.app/Frameworks
+rsync -a /Library/azule/CydiaSubstrate.framework Payload/*.app/Frameworks
 chain+=( CydiaSubstrate.framework/CydiaSubstrate )
 
 find -E "$dir/$tweakname/Tweak" -iname '*.framework' | while read i; do
