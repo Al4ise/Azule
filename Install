@@ -27,7 +27,7 @@ if [[ $? != 0 ]] ; then
     chmod +x /usr/local/bin/insert_dylib
 fi
 
-mkdir -p /Library/azule/.tmp
+mkdir -p /Library/azule
 cd /Library/azule
 
 while getopts ":fh" args; do
@@ -56,13 +56,19 @@ done
 
 git pull -q
 
-rsync -a azule /usr/local/bin/azule
-rsync -a update-azule /usr/local/bin/update-azule
-rsync -a uninstall-azule /usr/local/bin/uninstall-azule
+chmod +x azule
+chmod +x Install
+chmod +x Uninstall
 
-chmod +x /usr/local/bin/azule
-chmod +x /usr/local/bin/update-azule
-chmod +x /usr/local/bin/uninstall-azule
+# UPDATE-AZULE GLOBAL COMMAND
+if [ ! -f /usr/local/bin/update-azule ]; then
+    ln -s /Library/azule/Install /usr/local/bin/update-azule
+fi
+
+# AZULE GLOBAL COMMAND
+if [ ! -f /usr/local/bin/azule ]; then
+    ln -s /Library/azule/azule /usr/local/bin/azule
+fi
 
 # REMOVE OLD SUBSTRATE
 if [ -d CydiaSubstrate.framework ]; then
@@ -70,6 +76,7 @@ if [ -d CydiaSubstrate.framework ]; then
 fi
 
 # INSTALL SUBSTRATE
+mkdir -p ~/azule/.tmp
 cd .tmp
 curl -s -Lo substrate.deb "$(curl -s 'https://api.parcility.co/db/package/mobilesubstrate/saurik' | jq -r '.data.repo.url + .data.builds[-1].Filename')"
 ar -x substrate.deb data.tar.lzma
