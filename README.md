@@ -19,17 +19,18 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 * [Xcode](https://apps.apple.com/us/app/xcode/id497799835)
 
 ## Installation
-Clone the Repository:
+1. Set the $AZULE environment variable:
 ```zsh
-git clone --recursive https://github.com/Al4ise/Azule
+echo "export AZULE=~/azule" >> ~/.zprofile
 ```
+**Note:** For the change to take effect, you have to restart your terminal.
 
-Setup Azule:
+2. Clone and Setup Azule
 ```zsh
-chmod +x Azule/update-azule
-Azule/update-azule
+git clone --recursive https://github.com/Al4ise/Azule $AZULE
+chmod +x $AZULE/install
+$AZULE/install
 ```
-
 **You may be asked to provide your password.**
 
 ### Dependencies 
