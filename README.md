@@ -28,8 +28,8 @@ echo "export AZULE=~/azule" >> ~/.zprofile
 2. Clone and Setup Azule
 ```zsh
 git clone --recursive https://github.com/Al4ise/Azule $AZULE
-chmod +x $AZULE/install
-$AZULE/install
+chmod +x $AZULE/Install
+$AZULE/Install
 ```
 **You may be asked to provide your password.**
 
