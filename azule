@@ -123,7 +123,7 @@ if ! [[ -d "$output" ]]; then
 fi
 
 # .TMP DIRECTORIES
-dir=/Library/azule/Work
+dir=$AZULE/Work
 mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
@@ -185,7 +185,7 @@ fi
 find -E "$dir"/"$tweakname"/Tweak -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' -exec rsync -a {} Payload/*.app \;
 
 # FIX LINKS
-rsync -a /Library/azule/CydiaSubstrate.framework Payload/*.app/Frameworks
+rsync -a $AZULE/CydiaSubstrate.framework Payload/*.app/Frameworks
 chain+=( CydiaSubstrate.framework/CydiaSubstrate )
 
 find -E "$dir/$tweakname/Tweak" -iname '*.framework' | while read i; do
