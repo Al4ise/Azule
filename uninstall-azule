@@ -1,5 +1,5 @@
 #!/bin/zsh
 
-unlink /usr/local/bin/update-azule
-unlink /usr/local/bin/azule
-rm -rf $AZULE
+rm -rf /usr/local/bin/update-azule
+rm -rf /usr/local/bin/azule
+rm -rf /usr/local/bin/uninstall-azule
