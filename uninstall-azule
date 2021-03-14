@@ -1,5 +1,0 @@
-#!/bin/zsh
-
-rm -rf /usr/local/bin/update-azule
-rm -rf /usr/local/bin/azule
-rm -rf /usr/local/bin/uninstall-azule

@@ -1,0 +1,5 @@
+#!/bin/zsh
+
+unlink /usr/local/bin/update-azule
+unlink /usr/local/bin/azule
+rm -rf $AZULE
