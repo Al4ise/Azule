@@ -129,7 +129,7 @@ cd "$dir"/"$tweakname"
 
 # EXTRACT IPA
 eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
-executable=(Payload/*.app/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p"))
+executable="Payload/*.app/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
 
 for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
