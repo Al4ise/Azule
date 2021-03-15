@@ -201,8 +201,8 @@ for i in "${chain[@]}"; do
         for x in "${chain[@]}"; do
             if [[ "$u" =~ "$x" ]]; then
                 install_name_tool -change "$u" @rpath/"$x" Payload/*.app/Frameworks/"$i"
+                break
             fi
-            break
         done
     done
 done
