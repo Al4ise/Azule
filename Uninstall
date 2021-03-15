@@ -1,5 +1,16 @@
 #!/bin/zsh
 
-unlink /usr/local/bin/update-azule
-unlink /usr/local/bin/azule
-rm -rf $AZULE
+while true; do
+    printf "Do you want to continue? [Y/N]"
+    read yn
+    case $yn in
+        [Yy]* )
+            unlink /usr/local/bin/update-azule
+            unlink /usr/local/bin/azule
+            rm -rf $AZULE
+            break
+            ;;
+        [Nn]* ) exit;;
+        * ) echo "Please answer yes or no.";;
+    esac
+done
