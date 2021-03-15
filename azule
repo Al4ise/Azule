@@ -93,7 +93,7 @@ do true; done; fi
 
 # GET IPA
 if [ -z "$ipadir" ]; then; while
-    printf '\u001b[38;5;27;1mPath to IPA:\u001b[0m '
+    printf 'Path to IPA: '
     read ipa
     ipadir=$(eval "echo \$ipa")
     [ -z "$ipadir" ] && echo "I need the IPA to make your app."
@@ -152,7 +152,8 @@ for i in "${files[@]}"; do
         if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
            dpkg -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") "$dir"/"$tweakname"/Tweak
         else
-            echo "\u001b[31;1m"$i" isn't available on Parcility. Try getting the files manually.\u001b[0m"
+            echo ""$i" isn't available on Parcility. Try getting the files manually. "
+            exit
         fi
     fi
 done
