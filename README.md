@@ -33,9 +33,6 @@ $AZULE/Install
 ```
 **You may be asked to provide your password.**
 
-### Dependencies 
-During its installation, Azule will check whether its dependencies (Xcode CLI Tools, Homebrew, dpkg, and jq) are installed. If not, you will be prompted to install them.
-
 ## Usage
 There are two ways to use Azule:
 * GUI Mode
