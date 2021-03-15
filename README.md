@@ -5,14 +5,14 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 ## Features
 * Written with Speed and Efficiency in mind
 * Works for a wide range of tweaks
-* Supports importing tweaks, just by typing in their Bundle ID. Powered by [Parcility](https://parcility.co)
+* Supports importing tweaks, just through their BundleID. Powered by [Parcility](https://parcility.co)
 * Supports importing multiple tweaks at once
-* The command line version of Azule can be used to inject files with just a single command
+* Has both a Commnd Line work mode, and (somewhat of) a Graphical UI mode
 * You can always specify custom files and folders to import:
   - .deb .dylib and .framework files will be processed and imported 
   - .bundle and other files will be copied to the root directory of the app
 * Easy to use:
-  - Provides an interactive solution to importing only the dylib files you need
+  - Provides an interactive solution to importing only the files you need.
   - Includes the commands `azule` and `update-azule` which can be invoked from any terminal window
 
 ## Requirements
