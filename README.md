@@ -21,7 +21,7 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 ## Installation
 1. Set the $AZULE environment variable:
 ```zsh
-echo "export AZULE=~/azule" >> ~/.zprofile
+echo "export AZULE=~/Azule" >> ~/.zprofile
 ```
 **Note:** For the change to take effect, you have to restart your terminal.
 
