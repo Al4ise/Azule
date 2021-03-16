@@ -53,6 +53,7 @@ git pull -q
 chmod +x azule
 chmod +x Install
 chmod +x Uninstall
+chmod +x insert_dylib
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]; then
