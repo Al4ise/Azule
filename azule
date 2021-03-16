@@ -138,7 +138,7 @@ for i in "${files[@]}"; do
             mkdir -p ar
             cd ar
             ar -x "$i" data.tar.lzma
-            tar -C "$dir/$tweakname/Tweak" -xf data.tar.lzma
+            tar -C "$dir/$tweakname/Tweak" --lzma -xf data.tar.lzma
             cd "$dir/$tweakname"
             rm -rf ar
             ;;
@@ -160,8 +160,9 @@ for i in "${files[@]}"; do
         if [ "$(curl -sS "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
             mkdir -p ar
             cd ar
-            ar -x <(curl -sSL "$(curl -sS "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") data.tar.lzma
-            tar -C "$dir/$tweakname/Tweak" -xf data.tar.lzma
+            curl -sSL "$(curl -sS "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "$i.deb"
+            ar -x "$i.deb" data.tar.lzma
+            tar -C "$dir/$tweakname/Tweak" --lzma -xf data.tar.lzma
             cd "$dir/$tweakname"
             rm -rf ar
         else
