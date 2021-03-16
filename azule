@@ -157,7 +157,7 @@ for i in "${files[@]}"; do
             *) rsync -a "$i" Payload/*.app ;;
         esac
     else
-        if [ "$(curl -sS "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
+        if [ "$(jq -r '.status' ""<(curl -sS "https://api.parcility.co/db/package/$i"))" = "true" ]; then
             mkdir -p ar
             cd ar
             curl -sSL "$(curl -sS "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "$i.deb"
