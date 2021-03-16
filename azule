@@ -124,18 +124,23 @@ fi
 
 # .TMP DIRECTORIES
 dir=$AZULE/.tmp
-mkdir -p "$dir"/"$tweakname"/Tweak
-cd "$dir"/"$tweakname"
+mkdir -p "$dir/$tweakname/Tweak"
+cd "$dir/$tweakname"
 
 # EXTRACT IPA
 eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
-executable="Payload/*.app/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+executable="Payload/$(basename Payload/*.app)/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
 
 for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
-            *.deb) ar -x "$i"
-            tar -xf data.tar.lzma Tweak
+            *.deb)
+            mkdir -p ar
+            cd ar
+            ar -x "$i" data.tar.lzma
+            tar -C "$dir/$tweakname/Tweak" -xf data.tar.lzma
+            cd "$dir/$tweakname"
+            rm -rf ar
             ;;
             
             *.dylib)
@@ -152,9 +157,13 @@ for i in "${files[@]}"; do
             *) rsync -a "$i" Payload/*.app ;;
         esac
     else
-        if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
-           ar -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')")
-            tar -xf data.tar.lzma Tweak
+        if [ "$(curl -sS "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
+            mkdir -p ar
+            cd ar
+            ar -x <(curl -sSL "$(curl -sS "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')")
+            tar -C "$dir/$tweakname/Tweak" -xf data.tar.lzma
+            cd "$dir/$tweakname"
+            rm -rf ar
         else
             echo ""$i" isn't available on Parcility. Try getting the files manually. "
             exit
