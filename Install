@@ -13,7 +13,7 @@ if [[ $? != 0 ]] ; then
 fi
 
 # CHECK IF ADDITIONAL REQUIREMENTS EXIST
-dependencies=('jq' 'dpkg')
+dependencies=('jq')
 for i in "${dependencies[@]}"; do
     which -s "$i" >> /dev/null
     if [[ $? != 0 ]] ; then
