@@ -140,7 +140,7 @@ for i in "${files[@]}"; do
             
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
-                insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
+                $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
                 chain+=( $(basename "$i") )
                 ;;
 
@@ -173,7 +173,7 @@ if [ -z "$dylibs" ]; then
             if [ "$i" = "Done" ]; then; break
             else
                 find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-                insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+                $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
                 chain+=( "$i" )
             fi
         done
@@ -181,7 +181,7 @@ if [ -z "$dylibs" ]; then
 else
     for i in "${dylibs[@]}"; do
         find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
-        insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+        $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
         chain+=( "$i" )
     done
 fi
