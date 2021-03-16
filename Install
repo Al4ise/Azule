@@ -64,19 +64,5 @@ if [ ! -f /usr/local/bin/azule ]; then
     ln -s $AZULE/azule /usr/local/bin/azule
 fi
 
-# REMOVE OLD SUBSTRATE
-if [ -d CydiaSubstrate.framework ]; then
-    rm -rf CydiaSubstrate.framework
-fi
-
-# FETCH SUBSTRATE
-mkdir -p ~/azule/.tmp
-cd .tmp
-curl -s -Lo substrate.deb "$(curl -s 'https://api.parcility.co/db/package/mobilesubstrate/saurik' | jq -r '.data.repo.url + .data.builds[-1].Filename')"
-ar -x substrate.deb data.tar.lzma
-tar -C $AZULE --lzma --strip-components 3 -xf data.tar.lzma ./Library/Frameworks/CydiaSubstrate.framework
-plutil -convert binary1 "$AZULE/CydiaSubstrate.framework/Info.plist" || true
-rm -rf "$AZULE/CydiaSubstrate.framework/Libraries" "$AZULE/CydiaSubstrate.framework/Commands"
-
 # CLEANUP
 rm -rf $AZULE/.tmp
