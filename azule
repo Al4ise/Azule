@@ -123,18 +123,21 @@ if ! [[ -d "$output" ]]; then
 fi
 
 # .TMP DIRECTORIES
-dir=$AZULE/Work
+dir=$AZULE/.tmp
 mkdir -p "$dir"/"$tweakname"/Tweak
 cd "$dir"/"$tweakname"
 
 # EXTRACT IPA
 eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
-executable="Payload/$(basename Payload/*.app)/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+executable="Payload/*.app/$(plutil -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
 
 for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
-            *.deb) dpkg -x "$i" Tweak;;
+            *.deb) ar -x "$i"
+            tar -xf data.tar.lzma Tweak
+            ;;
+            
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
                 insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
@@ -150,7 +153,8 @@ for i in "${files[@]}"; do
         esac
     else
         if [ "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.status')" = "true" ]; then
-           dpkg -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')") "$dir"/"$tweakname"/Tweak
+           ar -x <(curl -sL "$dir"/"$tweakname"/$i.deb "$(curl -s "https://api.parcility.co/db/package/$i" | jq -r '.data.repo.url + .data.builds[-1].Filename')")
+            tar -xf data.tar.lzma Tweak
         else
             echo ""$i" isn't available on Parcility. Try getting the files manually. "
             exit
