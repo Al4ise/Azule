@@ -23,7 +23,7 @@ done
 
 which -s insert_dylib >> /dev/null
 if [[ $? != 0 ]] ; then
-    curl -sL -o /usr/local/bin/insert_dylib "$(curl -s https://api.github.com/repos/Al4ise/insert_dylib/releases/latest | jq -r '.assets[].browser_download_url')"
+    curl -sL -o /usr/local/bin/insert_dylib https://github.com/Al4ise/insert_dylib/releases/download/1.0/insert_dylib
     chmod +x /usr/local/bin/insert_dylib
 fi
 
