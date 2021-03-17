@@ -145,7 +145,7 @@ for i in "${files[@]}"; do
             
             *.dylib)
                 rsync -a "$i" Payload/*.app/Frameworks
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
+                $AZULE/bin/insert_dylib --inplace --all-yes "@rpath/$(basename "$i")" "$executable" >> /dev/null
                 chain+=( $(basename "$i") )
                 ;;
 
@@ -157,11 +157,10 @@ for i in "${files[@]}"; do
             *) rsync -a "$i" Payload/*.app ;;
         esac
     else
-        if [ "$(curl -sS https://api.parcility.co/db/package/$i | jq -r .status)" = "true" ]; then
+        if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | $AZULE/bin/jq -r .status)" = "true" ]; then
             mkdir -p ar
             cd ar
-            curl -sSL "$(curl -sS https://api.parcility.co/db/package/$i | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "$i.deb"
-            
+            curl -sSL "$(curl -sS https://api.parcility.co/db/package/$i | $AZULE/bin/jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "$i.deb"
             ar -x "$i.deb"
             tar -C "$dir/$tweakname/Tweak" -xf data.tar.*
             cd "$dir/$tweakname"
@@ -184,7 +183,7 @@ if [ -z "$dylibs" ]; then
             if [ "$i" = "Done" ]; then; break
             else
                 find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-                $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+                $AZULE/bin/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
                 chain+=( "$i" )
             fi
         done
@@ -192,7 +191,7 @@ if [ -z "$dylibs" ]; then
 else
     for i in "${dylibs[@]}"; do
         find -E "$dir"/"$tweakname"/Tweak -iname "$i" -exec rsync -a {} "$dir"/"$tweakname"/Payload/*.app/Frameworks \;
-        $AZULE/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+        $AZULE/bin/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
         chain+=( "$i" )
     done
 fi
