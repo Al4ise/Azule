@@ -43,12 +43,12 @@ chmod +x bin/jq
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]; then
-    ln -s $AZULE/Install /usr/local/bin/update-azule
+    sudo ln -s $AZULE/Install /usr/local/bin/update-azule
 fi
 
 # AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/azule ]; then
-    ln -s $AZULE/azule /usr/local/bin/azule
+    sudo ln -s $AZULE/azule /usr/local/bin/azule
 fi
 
 # CLEANUP
