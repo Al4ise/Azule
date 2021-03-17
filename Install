@@ -6,21 +6,6 @@ if [ $? != 0 ]; then
     xcode-select --install
 fi
 
-# CHECK IF BREW EXISTS
-which -s brew >> /dev/null
-if [[ $? != 0 ]] ; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
-
-# CHECK IF ADDITIONAL REQUIREMENTS EXIST
-dependencies=('jq')
-for i in "${dependencies[@]}"; do
-    which -s "$i" >> /dev/null
-    if [[ $? != 0 ]] ; then
-    brew install "$i"
-    fi
-done
-
 mkdir -p $AZULE
 cd $AZULE
 
