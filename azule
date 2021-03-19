@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 # ARGUEMENTS
-while getopts :n:i:o:f:d:hu args; do
+while getopts :n:i:o:v:f:d:hu args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -23,6 +23,14 @@ while getopts :n:i:o:f:d:hu args; do
             outdir="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 outdir+=" $(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
+            done
+            ;;
+            
+        v)
+            v="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                v+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
             ;;
@@ -68,6 +76,7 @@ while getopts :n:i:o:f:d:hu args; do
             echo "  -o [Path]                Specify an output directory."
             echo "  -f [Paths/Bundle IDs]    Specify the files or tweak Bundle IDs to import."
             echo "  -d [Names]               From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject."
+            echo "  -v [Version]             Set custom version for output ipa"
             echo "  -h                       Print this help menu."
             echo "  -u                       Remove UISupportedDevices from Info.plist"
             echo
@@ -224,6 +233,11 @@ done
 
 if [ -z "$u" ]; then
     plutil -remove UISupportedDevices Payload/*.app/Info.plist >> /dev/null
+fi
+
+if [ ! -z "$v" ]; then
+    plutil -replace CFBundleVersion -string "$v" Payload/*.app/Info.plist >> /dev/null
+    plutil -replace CFBundleShortVersionString -string "$v" Payload/*.app/Info.plist >> /dev/null
 fi
 
 # WRAPPING UP
