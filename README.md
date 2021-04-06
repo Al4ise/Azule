@@ -2,6 +2,8 @@
 
 A tool used to inject jailbreak tweaks into jailed iOS apps.
 
+*Works on macOS Catalina 10.15+*
+
 ## Features
 * Written with Speed and Efficiency in mind
 * Works for a wide range of tweaks
@@ -20,9 +22,11 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 
 ## Installation
 1. Set the $AZULE environment variable:
-```zsh
-echo "export AZULE=~/Azule" >> ~/.zprofile
-```
+
+zsh: `echo "export AZULE=~/Azule" >> ~/.zprofile`
+
+fish: `set -gx AZULE ~/Azule`
+
 **Note:** For the change to take effect, you have to restart your terminal.
 
 2. Clone and Setup Azule
