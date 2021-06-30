@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # CLEAN ON EXIT
 trap "rm -rf $AZULE/.tmp && exit" SIGINT
@@ -87,7 +87,7 @@ while getopts :n:i:o:c:f:d:humv args; do
             echo "  -m                       Enables the manual dylib selection 'UI'"
             echo
             echo "Examples:"
-            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib, ~/Foo.bundle"
+            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
             exit 1
@@ -100,7 +100,7 @@ while getopts :n:i:o:c:f:d:humv args; do
 done
 
 # GET IPA
-if [ -z "$ipadir" ]; then; while
+if [ -z "$ipadir" ]; then while
     printf 'Path to IPA: '
     read ipa
     ipadir=$(eval "echo \$ipa")
@@ -117,7 +117,7 @@ if [ -n "$v" ]; then
 fi
 
 # GET FILES
-if [ -z "$files" ]; then; while
+if [ -z "$files" ]; then while
     printf 'Files or Tweak IDs: '
     read ff
     files=( $(eval "echo $ff") )
@@ -149,7 +149,7 @@ if [ -n "$v" ]; then
 fi
 
 # OUTPUT DIRECTORY
-if [ -z "$outdir" ]; then; while
+if [ -z "$outdir" ]; then while
     printf 'Output Directory: '
     read out
     outdir=$(eval "echo $out")
@@ -180,9 +180,9 @@ cd "$dir/$tweakname"
 # VERBOSE
 if [ -n "$v" ]; then
     if [[ -d "$dir/$tweakname/Tweak" && -d "$dir/$tweakname/Custom" ]]; then
-        echo "Work directory has been created"
+        echo "Work directories has been created"
     else
-        echo "Couldn't create work directory"
+        echo "Couldn't create work directories"
     fi
 fi
 
@@ -309,7 +309,7 @@ if [ -n "$m" ]; then
         echo $'Available Dylibs: '
         PS3=$'Choose Dylibs (recommended): '
         select i in "${dylibs[@]}"; do
-            if [ "$i" = "Done" ]; then; break
+            if [ "$i" = "Done" ]; then break
             else
                 inject+=( "$i" )
             fi
@@ -331,6 +331,7 @@ else
     done
 fi
 
+# INJECT DYLIBS
 for i in "${inject[@]}"; do
     find -E "$dir/$tweakname/Tweak" "$dir/$tweakname/Custom" -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
     $AZULE/bin/insert_dylib --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
@@ -459,12 +460,12 @@ if [ -n "$c" ]; then
 fi
 
 # WRAPPING UP
-eval "zip -rqX '$output/$tweakname.ipa' Payload"
+eval "zip -rqX '$output$tweakname.ipa' Payload"
 
 # VERBOSE
 if [ -n "$v" ]; then
     if [ $? = 0 ]; then
-        echo "Generated IPA at "$output/$tweakname.ipa""
+        echo "Generated IPA at "$output$tweakname.ipa""
     else
         echo "Couldn't generate IPA"
     fi
