@@ -157,11 +157,9 @@ if [ -z "$outdir" ]; then while
 do true; done; fi
 
 tweakname=$(basename "$name")
-output=$(echo "$outdir/$name" | sed "s/"$tweakname"//g")
-if [ ! -d "$output" ]; then
-    mkdir -p "$output"
-fi
-
+output=$(echo "$outdir/$name" | sed "s/\(.*\)"$tweakname"\(.*\)/\1\2/")
+mkdir -p "$output"
+    
 # VERBOSE
 if [ -n "$v" ]; then
     if [ -d "$output" ]; then
@@ -180,7 +178,7 @@ cd "$dir/$tweakname"
 # VERBOSE
 if [ -n "$v" ]; then
     if [[ -d "$dir/$tweakname/Tweak" && -d "$dir/$tweakname/Custom" ]]; then
-        echo "Work directories has been created"
+        echo "Work directories have been created"
     else
         echo "Couldn't create work directories"
     fi
@@ -319,14 +317,18 @@ if [ -n "$m" ]; then
         pause
     fi
 else
-    dylibs=( $(find -E "$dir"/"$tweakname"/Tweak -iname '*.dylib') )
+    dylibs=( $(find -E "$dir/$tweakname/Tweak" -iname '*.dylib') )
 
     for i in "${dylibs[@]}"; do
-        bundles="$(plutil -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-        ipabundleid="$(plutil -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-    
-        if [[ "$bundles" =~ "$ipabundleid" ]]; then
+        if [[ "$i" =~ "$dir/$tweakname/Tweak/usr/lib/" ]]; then
             inject+=( "$(basename "$i")" )
+        else
+            bundles="$(plutil -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+            ipabundleid="$(plutil -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+    
+            if [[ "$bundles" =~ "$ipabundleid" ]]; then
+                inject+=( "$(basename "$i")" )
+            fi
         fi
     done
 fi
@@ -347,8 +349,8 @@ for i in "${inject[@]}"; do
 done
 
 # MOVE BUNDLES
-find -E "$dir/$tweakname/Tweak" -iname '*.bundle' ! -iregex '.*\.(bundle)/.+' | while read i; do
-    rsync -a "$i" Payload/*.app \;
+find -E "$dir/$tweakname/Tweak" -iname '*.bundle' ! -iregex '.*\.(bundle|framework)/.+' | while read i; do
+    rsync -a "$i" Payload/*.app/
     
     # VERBOSE
     if [ -n "$v" ]; then
