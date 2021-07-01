@@ -323,12 +323,27 @@ else
         if [[ "$i" =~ "$dir/$tweakname/Tweak/usr/lib/" ]]; then
             inject+=( "$(basename "$i")" )
         else
-            bundles="$(plutil -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-            ipabundleid="$(plutil -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+        
+            identifier="$(plutil -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+            idtype="$(plutil -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p")"
+            
+            case "$idtype" in
+            
+                Bundles)
+                    ipabundleid="$(plutil -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
     
-            if [[ "$bundles" =~ "$ipabundleid" ]]; then
-                inject+=( "$(basename "$i")" )
-            fi
+                    if [[ "$identifier" =~ "$ipabundleid" ]]; then
+                        inject+=( "$(basename "$i")" )
+                    fi
+                ;;
+            
+                Executables)
+                    if [[ "$identifier" =~ "$(basename "$executable")" ]]; then
+                        inject+=( "$(basename "$i")" )
+                    fi
+                ;;
+                
+            esac
         fi
     done
 fi
