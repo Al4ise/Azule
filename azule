@@ -376,7 +376,7 @@ fi
     
 inject+=( CydiaSubstrate.framework/CydiaSubstrate )
 
-find -E "$dir/$tweakname/Tweak" -iname '*.framework' | while read i; do
+while read i; do
     rsync -a "$i" Payload/*.app/Frameworks
     
     # VERBOSE
@@ -388,8 +388,8 @@ find -E "$dir/$tweakname/Tweak" -iname '*.framework' | while read i; do
         fi
     fi
     
-    inject+=( "$(basename "$i")/$(plutil -extract CFBundleExecutable xml1 -o - "$i"/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
-done
+    inject+=( "$(basename "$i")/$(plutil -extract CFBundleExecutable xml1 -o - "$i/Info.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
+done < <(find -E "$dir/$tweakname/Tweak" -iname '*.framework')
 
 for i in "${inject[@]}"; do
     codesign --remove-signature Payload/*.app/Frameworks/"$i"
@@ -417,7 +417,6 @@ for i in "${inject[@]}"; do
                         echo "Re-link of $i failed"
                     fi
                 fi
-                
                 break
             fi
         done
