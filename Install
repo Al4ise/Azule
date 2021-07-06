@@ -1,13 +1,35 @@
-#!/bin/zsh
+#!/bin/bash
 
-# CHECK IF XCODE CLI UTILS EXIST
-xcode-select -p 1>/dev/null
-if [ $? != 0 ]; then
-    xcode-select --install
-fi
-
-mkdir -p $AZULE
 cd $AZULE
+
+case $(uname) in
+    Darwin)
+        if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
+        
+            # CHECK IF XCODE CLI UTILS EXIST
+            xcode-select -p 1>/dev/null
+            if [ $? != 0 ]; then
+                xcode-select --install
+            fi
+        else
+            echo "You don't need to run this script on iOS"
+            exit 1
+        fi
+    ;;
+    
+    Linux)
+        # GET TOOLCHAIN
+        mkdir -p $AZULE/toolchain
+        if [ ! "$(ls -A $AZULE/toolchain)" ]; then
+            echo "Fetching toolchain..."
+            curl -sSLO https://github.com/CRKatri/llvm-project/releases/download/swift-5.3.2-RELEASE/swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
+            TMP=$(mktemp -d)
+            tar --zst -xf swift-5.3.2-RELEASE-ubuntu18.04.tar.zst -C $TMP
+            rsync --remove-source-files -a $TMP/swift-5.3.2-RELEASE-ubuntu18.04/* $AZULE/toolchain
+            rm -r swift-5.3.2-RELEASE-ubuntu18.04.tar.zst $TMP
+        fi
+    ;;
+esac
 
 while getopts ":fh" args; do
     case "$args" in
@@ -38,8 +60,10 @@ git pull -q
 chmod +x azule
 chmod +x Install
 chmod +x Uninstall
-chmod +x bin/insert_dylib
-chmod +x bin/jq
+chmod +x usr/bin/insert_dylib
+chmod +x usr/bin/jq
+chmod +x usr/bin/plutil
+chmod +x usr/bin/insert_dylib_linux
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]; then
