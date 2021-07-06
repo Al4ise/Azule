@@ -14,28 +14,11 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
   - .deb .dylib and .framework files will be processed and imported 
   - .bundle and other files will be copied to the root directory of the app
 * Easy to use:
-  - Provides an interactive solution to importing only the files you need.
+  - Just specify an iPA and a Tweak. Azule will do the rest for you.
   - Includes the commands `azule` and `update-azule` which can be invoked from any terminal window
 
 ## Requirements
 * [Xcode](https://apps.apple.com/us/app/xcode/id497799835)
-
-## Installation
-1. Set the $AZULE environment variable:
-
-zsh: `echo "export AZULE=~/Azule" >> ~/.zprofile`
-
-fish: `set -gx AZULE ~/Azule`
-
-**Note:** For the change to take effect, you have to restart your terminal.
-
-2. Clone and Setup Azule
-```zsh
-git clone --recursive https://github.com/Al4ise/Azule $AZULE
-chmod +x $AZULE/Install
-$AZULE/Install
-```
-**You may be asked to provide your password.**
 
 ## Usage
 There are two ways to use Azule:
