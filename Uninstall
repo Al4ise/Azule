@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 while true; do
     printf "Are you sure you want to delete Azule? [y/n]: "
