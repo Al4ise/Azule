@@ -239,7 +239,7 @@ fi
 
 # DECLARING $executable
 rsync -a Payload/*.app/Info.plist Plists/plist.tmp
-"$plutil" -extract Plists/plist.tmp CFBundleExecutable xml1
+"$plutil" -extract CFBundleExecutable xml1 Plists/plist.tmp
 executable="Payload/$(basename Payload/*.app)/$(cat Plists/plist.tmp | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
 rm -r Plists/plist.tmp
 
