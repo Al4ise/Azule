@@ -24,7 +24,7 @@ case $(uname) in
             echo "Fetching toolchain..."
             curl -sSLO https://github.com/CRKatri/llvm-project/releases/download/swift-5.3.2-RELEASE/swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
             TMP=$(mktemp -d)
-            tar --zst -xf swift-5.3.2-RELEASE-ubuntu18.04.tar.zst -C $TMP
+            tar -I zstd -xf swift-5.3.2-RELEASE-ubuntu18.04.tar.zst -C $TMP
             rsync --remove-source-files -a $TMP/swift-5.3.2-RELEASE-ubuntu18.04/* $AZULE/toolchain
             rm -r swift-5.3.2-RELEASE-ubuntu18.04.tar.zst $TMP
         fi
