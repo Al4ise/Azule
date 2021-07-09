@@ -10,7 +10,7 @@ case $(uname) in
             ar="ar"
             otool="otool"
             install_name_tool="install_name_tool"
-            ldid="ldid"
+            ldid="$AZULE/usr/bin/ldid"
             azule="$AZULE"
         else
             jq="jq"
