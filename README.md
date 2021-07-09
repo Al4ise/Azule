@@ -17,9 +17,6 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
   - Just specify an iPA and a Tweak. Azule will do the rest for you.
   - Includes the commands `azule` and `update-azule` which can be invoked from any terminal window
 
-## Requirements
-* [Xcode](https://apps.apple.com/us/app/xcode/id497799835)
-
 ## Usage
 There are two ways to use Azule:
 * GUI Mode
