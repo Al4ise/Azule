@@ -60,10 +60,8 @@ git pull -q
 chmod +x azule
 chmod +x Install
 chmod +x Uninstall
-chmod +x usr/bin/insert_dylib
-chmod +x usr/bin/jq
-chmod +x usr/bin/plutil
-chmod +x usr/bin/insert_dylib_linux
+
+for i in "usr/bin/*"; do chmod +x $i; done
 
 # UPDATE-AZULE GLOBAL COMMAND
 if [ ! -f /usr/local/bin/update-azule ]; then
