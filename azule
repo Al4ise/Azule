@@ -41,7 +41,7 @@ esac
 trap "rm -rf $azule/.tmp && exit" SIGINT
 
 # ARGUEMENTS
-while getopts :n:i:o:c:f:d:humCv args; do
+while getopts :n:i:o:c:f:d:huSmeCv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -98,6 +98,10 @@ while getopts :n:i:o:c:f:d:humCv args; do
         m) m=1 ;;
         
         C) C=1 ;;
+        
+        e) e=1 ;;
+
+        S) fakesign=1 ;;
                 
         h)
             echo "Usage: azule [options]"
@@ -125,6 +129,8 @@ while getopts :n:i:o:c:f:d:humCv args; do
             echo "  -v                       Enable Verbose Mode"
             echo "  -m                       Enables the manual dylib selection 'UI'"
             echo "  -C                       Disables Aatomatic cleanup"
+            echo "  -s                       Fakesigns iPA for use with AppSync"
+            echo "  -e                       Removes App Extensions"
             echo
             echo "Examples:"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
@@ -165,7 +171,7 @@ if [ -z "$files" ]; then while
 do true; done; fi
 
 # VERBOSE
-if [ -f "$v" ]; then
+if [ -n "$v" ]; then
     for i in "${files[@]}"; do
         echo "$i will be imported"
     done
@@ -213,12 +219,11 @@ fi
 dir="$azule/.tmp"
 mkdir -p "$dir/$tweakname/Tweak"
 mkdir -p "$dir/$tweakname/Custom"
-mkdir "$dir/$tweakname/Plists"
 cd "$dir/$tweakname"
 
 # VERBOSE
 if [ -n "$v" ]; then
-    if [[ -d "$dir/$tweakname/Tweak" && -d "$dir/$tweakname/Custom" && -d "$dir/$tweakname/Plists" ]]; then
+    if [[ -d "$dir/$tweakname/Tweak" && -d "$dir/$tweakname/Custom" ]]; then
         echo "Work directories have been created"
     else
         echo "Couldn't create work directories"
@@ -226,22 +231,27 @@ if [ -n "$v" ]; then
 fi
 
 # EXTRACT IPA
+echo "Extracting iPA..."
 eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
 
-# VERBOSE
-if [ -n "$v" ]; then
-    if [ -d "$dir/$tweakname/Payload" ]; then
-        echo "IPA extracted"
+if [ -d "$dir/$tweakname/Payload" ]; then
+    echo "IPA extracted"
+else
+    echo "Couldn't extract IPA"
+fi
+
+if [ -n "$e" ]; then
+    echo "Removing Extensions..."
+    rm -rf Payload/*.app/Plugins
+    tv="$?"
+    if [ "$tv" = 0 ]; then
+        echo "Removed Extensions"
     else
-        echo "Couldn't extract IPA"
+        echo "Couldn't Remove Extensions"
     fi
 fi
 
-# DECLARING $executable
-rsync -a Payload/*.app/Info.plist Plists/plist.tmp
-"$plutil" -extract CFBundleExecutable xml1 Plists/plist.tmp
-executable="Payload/$(basename Payload/*.app)/$(cat Plists/plist.tmp | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-rm -r Plists/plist.tmp
+executable="Payload/$(basename Payload/*.app)/$("$plutil" -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
 
 # VERBOSE
 if [ -n "$v" ]; then
@@ -262,13 +272,10 @@ for i in "${files[@]}"; do
                 tar -C "$dir/$tweakname/Tweak" -xf data.tar.*
                 tv="$?"
                 
-                # VERBOSE
-                if [ -n "$v" ]; then
-                    if [ "$tv" = 0 ]; then
-                        echo "$(basename "$i") extracted"
-                    else
-                        echo "Failed to extract $(basename "$i")"
-                    fi
+                if [ "$tv" = 0 ]; then
+                    echo "$(basename "$i") extracted"
+                else
+                    echo "Failed to extract $(basename "$i")"
                 fi
             
                 cd "$dir/$tweakname"
@@ -279,12 +286,11 @@ for i in "${files[@]}"; do
                 rsync -a "$i" "$dir/$tweakname/Custom"
                 tv="$?"
                 
-                # VERBOSE
                 if [ -n "$v" ]; then
                     if [ "$tv" = 0 ]; then
-                        echo "Copied "$i" to work directory"
+                        echo "Copied "$(basename "$i")" to work directory"
                     else
-                        echo "$i couldn't be copied to work directory"
+                        echo "Couldn't Copy "$(basename "$i")" to work directory"
                     fi
                 fi
                 
@@ -295,31 +301,22 @@ for i in "${files[@]}"; do
                 rsync -a "$i" Payload/*.app/Frameworks
                 tv="$?"
                 
-                # VERBOSE
-                if [ -n "$v" ]; then
-                    if [ "$tv" = 0 ]; then
-                        echo "Copied "$i" to work directory"
-                    else
-                        echo "$i couldn't be copied to work directory"
-                    fi
+                if [ "$tv" = 0 ]; then
+                    echo "Moved $i to app directory"
+                else
+                    echo "Couldn't Move $i to app directory"
                 fi
                 
-                rsync -a "$i"/Info.plist Plists/plist.tmp
-                "$plutil" -extract CFBundleExecutable xml1 Plists/plist.tmp
-                inject+=( "$(basename "$i")/$(cat Plists/plist.tmp | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
-                rm -r Plists/plist.tmp
+                inject+=( "$(basename "$i")/$("$plutil" -extract CFBundleExecutable xml1 -o - "$i"/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
             ;;
             
             *) rsync -a "$i" Payload/*.app
                 tv="$?"
                 
-                # VERBOSE
-                if [ -n "$v" ]; then
-                    if [ "$tv" = 0 ]; then
-                        echo "Copied "$i" to work directory"
-                    else
-                        echo "$i couldn't be copied to work directory"
-                    fi
+                if [ "$tv" = 0 ]; then
+                    echo "Moved $i to app directory"
+                else
+                    echo "Couldn't Move $i to app directory"
                 fi
             ;;
         esac
@@ -327,28 +324,23 @@ for i in "${files[@]}"; do
         if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
             mkdir -p ar
             cd ar
+            echo "Fetching $i..."
             curl -sSL "$(curl -sS https://api.parcility.co/db/package/$i | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$i.deb"
             
-            # VERBOSE
-            if [ -n "$v" ]; then
-                if [ -f "$i.deb" ]; then
-                    echo "Fetched "$i""
-                else
-                    echo "Couldn't fetch $i"
-                fi
+            if [ -f "$i.deb" ]; then
+                echo "Fetched "$i""
+            else
+                echo "Couldn't fetch $i"
             fi
-            
+            echo "Extracting $i..."
             "$ar" -x "$i.deb"
             tar -C "$dir/$tweakname/Tweak" -xf data.tar.*
             tv="$?"
             
-            # VERBOSE
-            if [ -n "$v" ]; then
-                if [ "$tv" = 0 ]; then
-                    echo "$(basename "$i") extracted"
-                else
-                    echo "Failed to extract $(basename "$i")"
-                fi
+            if [ "$tv" = 0 ]; then
+                echo "Extracted $(basename "$i")"
+            else
+                echo "Failed to extract $(basename "$i")"
             fi
             
             cd "$dir/$tweakname"
@@ -384,22 +376,12 @@ else
         if [[ "$i" =~ "$dir/$tweakname/Tweak/usr/lib/" ]]; then
             inject+=( "$(basename "$i")" )
         else
-            rsync -a ${i%.*}.plist Plists/plist.tmp
-            "$plutil" -extract Filter xml1 Plists/plist.tmp
-            identifier="$(cat Plists/plist.tmp | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-            rm -r Plists/plist.tmp
-            
-            rsync -a ${i%.*}.plist Plists/plist.tmp
-            "$plutil" -extract Filter xml1 Plists/plist.tmp
-            idtype="$(cat Plists/plist.tmp | sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p")"
-            rm -r Plists/plist.tmp
+            identifier="$("$plutil" -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+            idtype="$("$plutil" -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p")"
             
             case "$idtype" in
                 Bundles)
-                    rsync -a Payload/*.app/Info.plist Plists/plist.tmp
-                    "$plutil" -extract CFBundleIdentifier xml1 Plists/plist.tmp
-                    ipabundleid="$(cat Plists/plist.tmp | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-                    rm -r Plists/plist.tmp
+                   ipabundleid="$("$plutil" -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
                     
                     if [[ "$identifier" =~ "$ipabundleid" ]]; then
                         inject+=( "$(basename "$i")" )
@@ -420,16 +402,20 @@ fi
 # INJECT DYLIBS
 for i in "${inject[@]}"; do
     find "$dir/$tweakname/Tweak" "$dir/$tweakname/Custom" -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-    "$insert_dylib" --inplace --all-yes "@rpath/$i" "$executable" >> /dev/null
+    tv="$?"
+    if [ "$tv" = 0 ]; then
+        echo "Copied "$(basename "$i")" to app directory"
+    else
+        echo ""$(basename "$i")" couldn't be copied to app directory"
+    fi
+        
+    "$insert_dylib" --inplace --all-yes "@rpath/$i" "$executable" &> /dev/null
     tv="$?"
     
-    # VERBOSE
-    if [ -n "$v" ]; then
-        if [ "$tv" = 0 ]; then
-            echo "Injected $i"
-        else
-            echo "Couldn't inject $i)"
-        fi
+    if [ "$tv" = 0 ]; then
+        echo "Injected $i"
+    else
+        echo "Couldn't inject $i)"
     fi
 done
 
@@ -438,27 +424,20 @@ find "$dir/$tweakname/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.f
     rsync -a "$i" Payload/*.app/
     tv="$?"
     
-    # VERBOSE
-    if [ -n "$v" ]; then
-        if [ "$tv" = 0 ]; then
-            echo "Copied "$(basename "$i")" to app directory"
-        else
-            echo ""$(basename "$i")" couldn't be copied to app directory"
-        fi
+    if [ "$tv" = 0 ]; then
+        echo "Copied "$(basename "$i")" to app directory"
+    else
+        echo ""$(basename "$i")" couldn't be copied to app directory"
     fi
 done
 
 # FIX LINKS
 rsync -a "$azule"/CydiaSubstrate.framework Payload/*.app/Frameworks
 tv="$?"
-
-# VERBOSE
-if [ -n "$v" ]; then
-    if [ "$tv" = 0 ]; then
-        echo "Copied CydiaSubstrate.framework to app directory"
-    else
-        echo "CydiaSubstrate.framework couldn't be copied to app directory"
-    fi
+if [ "$tv" = 0 ]; then
+    echo "Copied CydiaSubstrate.framework to app directory"
+else
+    echo "CydiaSubstrate.framework couldn't be copied to app directory"
 fi
     
 inject+=( CydiaSubstrate.framework/CydiaSubstrate )
@@ -467,21 +446,13 @@ while read i; do
     rsync -a "$i" Payload/*.app/Frameworks
     tv="$?"
     
-    # VERBOSE
-    if [ -n "$v" ]; then
-        if [ "$tv" = 0 ]; then
-            echo "Copied $(basename "$i") to app directory"
-        else
-            echo "$(basename "$i") couldn't be copied to app directory"
-        fi
+    if [ "$tv" = 0 ]; then
+        echo "Copied $(basename "$i") to app directory"
+    else
+        echo "$(basename "$i") couldn't be copied to app directory"
     fi
-    
-    rsync -a "$i"/Info.plist Plists/plist.tmp
-    "$plutil" -extract CFBundleExecutable xml1 Plists/plist.tmp
-    inject+=( "$(basename "$i")/$(cat Plists/plist.tmp | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
-    rm -r Plists/plist.tmp
-    
-    done < <(find "$dir/$tweakname/Tweak" -iname '*.framework')
+    inject+=( "$(basename "$i")/$("$plutil" -extract CFBundleExecutable xml1 -o - "$i/Info.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
+done < <(find "$dir/$tweakname/Tweak" -iname '*.framework')
 
 for i in "${inject[@]}"; do
     "$ldid" -r Payload/*.app/Frameworks/"$i"
@@ -496,35 +467,17 @@ for i in "${inject[@]}"; do
         fi
     fi
     
-    links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1) )
+    links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1 | sort -u) )
     for l in "${links[@]}"; do
         for x in "${inject[@]}"; do
             if [[ "$l" =~ "$x" ]]; then
                 if [[ "$l" =~ "$i" ]]; then
                     "$install_name_tool" -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
-                    tv="$?"
-                    
-                    # VERBOSE
-                    if [ -n "$v" ]; then
-                        if [ "$tv" = 0 ]; then
-                            echo "ID-ed "$l" to @rpath/"$i""
-                        else
-                            echo "Couldn't ID "$l""
-                        fi
-                    fi
+                    tid=$(( $tid + $? ))
                     break
                 else
                     "$install_name_tool" -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
-                    tv="$?"
-                    
-                    # VERBOSE
-                    if [ -n "$v" ]; then
-                        if [ "$tv" = 0 ]; then
-                            echo "Re-linked $l to @rpath/$x in $i"
-                        else
-                            echo "Re-link of $i failed"
-                        fi
-                    fi
+                    tlnk=$(( $tlnk + $? ))
                     break
                 fi
             fi
@@ -532,23 +485,29 @@ for i in "${inject[@]}"; do
     done
 done
 
+if [ "$tid" = 0 ]; then
+    echo "ID Successful"
+else
+    echo "$tid files failed to ID"
+fi
+
+if [ "$tlnk" = 0 ]; then
+    echo "Re-Link Successful"
+else
+    echo "$tlnk Re-Links failed"
+fi
+
 if [ -n "$u" ]; then
-    rsync -a Payload/*.app/Info.plist Plists/plist.tmp
-    "$plutil" -extract UISupportedDevices xml1 Plists/plist.tmp
-    UISupportedDevices="$(cat Plists/plist.tmp | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-    rm -r Plists/plist.tmp
+    UISupportedDevices="$("$plutil" -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
     
     if [ -n "$UISupportedDevices" ]; then
-        "$plutil" -s -remove UISupportedDevices Payload/*.app/Info.plist
+        "$plutil" -remove UISupportedDevices Payload/*.app/Info.plist
         tv="$?"
     
-        # VERBOSE
-        if [ -n "$v" ]; then
-            if [ "$tv" = 0 ]; then
-                echo "Removed UISupportedDevices from app"
-            else
-                echo "Couldn't remove UISupportedDevices from app"
-            fi
+        if [ "$tv" = 0 ]; then
+            echo "Removed UISupportedDevices from app"
+        else
+            echo "Couldn't remove UISupportedDevices from app"
         fi
     else
         echo "The specified iPA doesn't have UISupportedDevices"
@@ -559,39 +518,46 @@ if [ -n "$c" ]; then
     "$plutil" -replace CFBundleVersion -string "$c" Payload/*.app/Info.plist >> /dev/null
     tv="$?"
     
-    # VERBOSE
-    if [ -n "$v" ]; then
-        if [ "$tv" = 0 ]; then
-            echo "Changed CFBundleVersion to $c"
-        else
-            echo "Couldn't change CFBundleVersion to $c"
-        fi
+    if [ "$tv" = 0 ]; then
+        echo "Changed CFBundleVersion to $c"
+    else
+        echo "Couldn't change CFBundleVersion to $c"
     fi
     
     "$plutil" -replace CFBundleShortVersionString -string "$c" Payload/*.app/Info.plist >> /dev/null
     tv="$?"
     
-    # VERBOSE
-    if [ -n "$v" ]; then
-        if [ "$tv" = 0 ]; then
-            echo "Changed CFBundleShortVersionString to $c"
-        else
-            echo "Couldn't change CFBundleShortVersionString to $c"
-        fi
+    if [ "$tv" = 0 ]; then
+        echo "Changed CFBundleShortVersionString to $c"
+    else
+        echo "Couldn't change CFBundleShortVersionString to $c"
     fi
+fi
+
+# FAKESIGNING
+if [ -n "$fakesign" ]; then
+    if [ -n "$v" ]; then
+        echo "Fakesigning iPA..."
+    fi
+    "$ldid" -S -M Payload/* &>/dev/null
+    tv="$?"
+    if [ "$tv" != 0 ]; then
+        echo "Couldn't Fakesign iPA"
+    fi
+fi
+
+if [ "$tv" = 0 ]; then
+    echo "Fakesigned iPA"
 fi
 
 # WRAPPING UP
 eval "zip -rqX '$output$tweakname.ipa' Payload"
 tv="$?"
 
-# VERBOSE
-if [ -n "$v" ]; then
-    if [ "$tv" = 0 ]; then
-        echo "Generated IPA at "$output$tweakname.ipa""
-    else
-        echo "Couldn't generate IPA"
-    fi
+if [ "$tv" = 0 ]; then
+    echo "Generated IPA at "$output$tweakname.ipa""
+else
+    echo "Couldn't generate IPA"
 fi
 
 if [ -z "$C" ]; then
