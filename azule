@@ -242,7 +242,7 @@ fi
 
 if [ -n "$e" ]; then
     echo "Removing Extensions..."
-    rm -rf Payload/*.app/Plugins
+    rm -rf Payload/*.app/Plugins/
     tv="$?"
     if [ "$tv" = 0 ]; then
         echo "Removed Extensions"
@@ -536,22 +536,19 @@ fi
 
 # FAKESIGNING
 if [ -n "$fakesign" ]; then
-    if [ -n "$v" ]; then
-        echo "Fakesigning iPA..."
-    fi
+    echo "Fakesigning iPA..."
     "$ldid" -S -M Payload/* &>/dev/null
     tv="$?"
     if [ "$tv" != 0 ]; then
         echo "Couldn't Fakesign iPA"
     fi
-fi
-
-if [ "$tv" = 0 ]; then
-    echo "Fakesigned iPA"
+    if [ "$tv" = 0 ]; then
+        echo "Fakesigned iPA"
+    fi
 fi
 
 # WRAPPING UP
-eval "zip -rqX '$output$tweakname.ipa' Payload"
+eval "zip -rq9 '$output$tweakname.ipa' Payload"
 tv="$?"
 
 if [ "$tv" = 0 ]; then
