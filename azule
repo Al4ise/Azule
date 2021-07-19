@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# CLEAN ON EXIT
+trap "rm -rf $azule/.tmp && exit" SIGINT
+trap "rm -rf $azule/.tmp && exit" EXIT
+
 # PLATFORM SPECIFIC
 case $(uname) in
     Darwin)
@@ -35,10 +39,6 @@ case $(uname) in
         azule="$AZULE"
     ;;
 esac
-
-
-# CLEAN ON EXIT
-trap "rm -rf $azule/.tmp && exit" SIGINT
 
 # ARGUEMENTS
 while getopts :n:i:o:c:f:d:huSmeCv args; do
@@ -92,15 +92,10 @@ while getopts :n:i:o:c:f:d:huSmeCv args; do
             ;;
             
         u) u=1 ;;
-        
         v) v=1 ;;
-        
         m) m=1 ;;
-        
         C) C=1 ;;
-        
         e) e=1 ;;
-
         S) fakesign=1 ;;
                 
         h)
@@ -202,39 +197,45 @@ if [ -z "$outdir" ]; then while
     [ -z "$outdir" ] && echo "I don't want to keep the app for myself."
 do true; done; fi
 
-tweakname=$(basename "$name")
-output=$(echo "$outdir/$name" | sed "s/\(.*\)"$tweakname"\(.*\)/\1\2/")
-mkdir -p "$output"
-    
-# VERBOSE
-if [ -n "$v" ]; then
-    if [ -d "$output" ]; then
-        echo "Output Directory is $output"
-    else
-        echo "$output is an invalid output directory"
-    fi
+tweakid="$RANDOM"
+mkdir -p "$(dirname "$outdir/$name")"
+
+tv="$?"
+if [ "$tv" = 0 ]; then
+    echo "Output Directory is $(dirname "$outdir/$name")"
+else
+    echo "$(dirname "$outdir/$name") is an invalid output directory"
 fi
 
 # .TMP DIRECTORIES
-dir="$azule/.tmp"
-mkdir -p "$dir/$tweakname/Tweak"
-mkdir -p "$dir/$tweakname/Custom"
-cd "$dir/$tweakname"
-
-# VERBOSE
+dir="$(mktemp -d)"
+mkdir -p "$dir/$tweakid/Tweak"
+tv="$?"
 if [ -n "$v" ]; then
-    if [[ -d "$dir/$tweakname/Tweak" && -d "$dir/$tweakname/Custom" ]]; then
-        echo "Work directories have been created"
+    if [ "$tv" = 0 ]; then
+        echo "$dir/$tweakid/Tweak has been created"
     else
-        echo "Couldn't create work directories"
+        echo "Couldn't create $dir/$tweakid/Tweak"
     fi
 fi
 
+mkdir -p "$dir/$tweakid/Custom"
+tv="$?"
+if [ -n "$v" ]; then
+    if [ "$tv" = 0 ]; then
+        echo "$dir/$tweakid/Custom has been created"
+    else
+        echo "Couldn't create $dir/$tweakid/Custom"
+    fi
+fi
+cd "$dir/$tweakid"
+
 # EXTRACT IPA
 echo "Extracting iPA..."
-eval "unzip -q '$ipadir' -d "$dir/'$tweakname'""
+eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
 
-if [ -d "$dir/$tweakname/Payload" ]; then
+tv="$?"
+if [ "$tv" = 0 ]; then
     echo "IPA extracted"
 else
     echo "Couldn't extract IPA"
@@ -269,7 +270,7 @@ for i in "${files[@]}"; do
                 mkdir -p ar
                 cd ar
                 "$ar" -x "$i"
-                tar -C "$dir/$tweakname/Tweak" -xf data.tar.*
+                tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
                 tv="$?"
                 
                 if [ "$tv" = 0 ]; then
@@ -278,12 +279,12 @@ for i in "${files[@]}"; do
                     echo "Failed to extract $(basename "$i")"
                 fi
             
-                cd "$dir/$tweakname"
+                cd "$dir/$tweakid"
                 rm -rf ar
             ;;
             
             *.dylib)
-                rsync -a "$i" "$dir/$tweakname/Custom"
+                rsync -a "$i" "$dir/$tweakid/Custom"
                 tv="$?"
                 
                 if [ -n "$v" ]; then
@@ -334,7 +335,7 @@ for i in "${files[@]}"; do
             fi
             echo "Extracting $i..."
             "$ar" -x "$i.deb"
-            tar -C "$dir/$tweakname/Tweak" -xf data.tar.*
+            tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             tv="$?"
             
             if [ "$tv" = 0 ]; then
@@ -343,7 +344,7 @@ for i in "${files[@]}"; do
                 echo "Failed to extract $(basename "$i")"
             fi
             
-            cd "$dir/$tweakname"
+            cd "$dir/$tweakid"
             rm -rf ar
         else
             echo "$i isn't available on Parcility. Try getting the files manually. "
@@ -354,9 +355,9 @@ done
 
 # SPECIFY DYLIBS
 if [ -n "$m" ]; then
-    if [ -n "$(ls -A "$dir/$tweakname/Tweak" 2>/dev/null)" ]; then
+    if [ -n "$(ls -A "$dir/$tweakid/Tweak" 2>/dev/null)" ]; then
         export COLUMNS=1
-        dylibs=( $(find "$dir/$tweakname/Tweak" -iname '*.dylib' -exec basename {} \;) 'Done' )
+        dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib' -exec basename {} \;) 'Done' )
         echo $'Available Dylibs: '
         PS3=$'Choose Dylibs (recommended): '
         select i in "${dylibs[@]}"; do
@@ -370,10 +371,10 @@ if [ -n "$m" ]; then
         pause
     fi
 else
-    dylibs=( $(find "$dir/$tweakname/Tweak" -iname '*.dylib') )
+    dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib') )
 
     for i in "${dylibs[@]}"; do
-        if [[ "$i" =~ "$dir/$tweakname/Tweak/usr/lib/" ]]; then
+        if [[ "$i" =~ "$dir/$tweakid/Tweak/usr/lib/" ]]; then
             inject+=( "$(basename "$i")" )
         else
             identifier="$("$plutil" -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
@@ -401,7 +402,7 @@ fi
 
 # INJECT DYLIBS
 for i in "${inject[@]}"; do
-    find "$dir/$tweakname/Tweak" "$dir/$tweakname/Custom" -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+    find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
     tv="$?"
     if [ "$tv" = 0 ]; then
         echo "Copied "$(basename "$i")" to app directory"
@@ -420,7 +421,7 @@ for i in "${inject[@]}"; do
 done
 
 # MOVE BUNDLES
-find "$dir/$tweakname/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*'  | while read i; do
+find "$dir/$tweakid/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*'  | while read i; do
     rsync -a "$i" Payload/*.app/
     tv="$?"
     
@@ -452,7 +453,7 @@ while read i; do
         echo "$(basename "$i") couldn't be copied to app directory"
     fi
     inject+=( "$(basename "$i")/$("$plutil" -extract CFBundleExecutable xml1 -o - "$i/Info.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
-done < <(find "$dir/$tweakname/Tweak" -iname '*.framework')
+done < <(find "$dir/$tweakid/Tweak" -iname '*.framework')
 
 for i in "${inject[@]}"; do
     "$ldid" -r Payload/*.app/Frameworks/"$i"
@@ -548,11 +549,12 @@ if [ -n "$fakesign" ]; then
 fi
 
 # WRAPPING UP
-eval "zip -rq9 '$output$tweakname.ipa' Payload"
+echo "Generating iPA..."
+eval "zip -rq '$outdir/$name.ipa' Payload"
 tv="$?"
 
 if [ "$tv" = 0 ]; then
-    echo "Generated IPA at "$output$tweakname.ipa""
+    echo "Generated IPA at $outdir/$name.ipa"
 else
     echo "Couldn't generate IPA"
 fi
