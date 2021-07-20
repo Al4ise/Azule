@@ -16,6 +16,10 @@ case $(uname) in
             install_name_tool="install_name_tool"
             ldid="$AZULE/usr/bin/ldid"
             azule="$AZULE"
+            
+            ExtractPlistValue () {
+                "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
+            }
         else
             jq="jq"
             insert_dylib="insert_dylib"
@@ -25,6 +29,13 @@ case $(uname) in
             install_name_tool="install_name_tool"
             ldid="ldid"
             azule="/var/mobile/Documents/Azule"
+            
+            ExtractPlistValue () {
+                "$plutil" -key "$1" "$2" >> tmp.plist
+                "$plutil" -convert xml1 tmp.plist &>/dev/null
+                cat tmp.plist | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
+                rm tmp.plist
+            }
         fi
     ;;
     
@@ -37,6 +48,10 @@ case $(uname) in
         install_name_tool="$AZULE/toolchain/usr/bin/install_name_tool"
         ldid="$AZULE/toolchain/usr/bin/ldid"
         azule="$AZULE"
+        
+        ExtractPlistValue () {
+            "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
+        }
     ;;
 esac
 
@@ -251,8 +266,7 @@ if [ -n "$e" ]; then
         echo "Couldn't Remove Extensions"
     fi
 fi
-
-executable="Payload/$(basename Payload/*.app)/$("$plutil" -extract CFBundleExecutable xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
 
 # VERBOSE
 if [ -n "$v" ]; then
@@ -308,7 +322,8 @@ for i in "${files[@]}"; do
                     echo "Couldn't Move $i to app directory"
                 fi
                 
-                inject+=( "$(basename "$i")/$("$plutil" -extract CFBundleExecutable xml1 -o - "$i"/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
+                
+                inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i"/Info.plist string)" )
             ;;
             
             *) rsync -a "$i" Payload/*.app
@@ -377,13 +392,14 @@ else
         if [[ "$i" =~ "$dir/$tweakid/Tweak/usr/lib/" ]]; then
             inject+=( "$(basename "$i")" )
         else
-            identifier="$("$plutil" -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
-            idtype="$("$plutil" -extract Filter xml1 -o - "${i%.*}.plist" | sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p")"
+            identifier="$(ExtractPlistValue Filter ${i%.*}.plist string)"
+            idtype="$(ExtractPlistValue Filter ${i%.*}.plist key)"
             
             case "$idtype" in
                 Bundles)
-                   ipabundleid="$("$plutil" -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+                    ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist string)"
                     
+                
                     if [[ "$identifier" =~ "$ipabundleid" ]]; then
                         inject+=( "$(basename "$i")" )
                     fi
@@ -452,7 +468,7 @@ while read i; do
     else
         echo "$(basename "$i") couldn't be copied to app directory"
     fi
-    inject+=( "$(basename "$i")/$("$plutil" -extract CFBundleExecutable xml1 -o - "$i/Info.plist" | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")" )
+    inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist" string)" )
 done < <(find "$dir/$tweakid/Tweak" -iname '*.framework')
 
 for i in "${inject[@]}"; do
@@ -486,20 +502,20 @@ for i in "${inject[@]}"; do
     done
 done
 
-if [ "$tid" = 0 ]; then
+if [[ "$tid" = 0 || -z "$tid" ]]; then
     echo "ID Successful"
 else
     echo "$tid files failed to ID"
 fi
 
-if [ "$tlnk" = 0 ]; then
+if [[ "$tlnk" = 0 || -z "$tlnk" ]]; then
     echo "Re-Link Successful"
 else
     echo "$tlnk Re-Links failed"
 fi
 
 if [ -n "$u" ]; then
-    UISupportedDevices="$("$plutil" -extract CFBundleIdentifier xml1 -o - Payload/*.app/Info.plist | sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p")"
+    UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist string &>/dev/null)"
     
     if [ -n "$UISupportedDevices" ]; then
         "$plutil" -remove UISupportedDevices Payload/*.app/Info.plist
