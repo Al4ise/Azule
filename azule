@@ -36,6 +36,7 @@ case $(uname) in
                 cat tmp.plist | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
                 rm tmp.plist
             }
+            iOS=1
         fi
     ;;
     
@@ -57,13 +58,20 @@ esac
 
 # UNNECESSARY FUNCTIONS
 Verbose () {
+    tv="$?"
     if [ "$3" = "-v" ]; then
         if [ -n "$v" ]; then
-            if [ "$?" = 0 ]; then
+            if [ "$tv" = 0 ]; then
                 echo "$1"
             else
                 echo "$2"
             fi
+        fi
+    else
+        if [ "$tv" = 0 ]; then
+            echo "$1"
+        else
+            echo "$2"
         fi
     fi
 }
@@ -147,13 +155,13 @@ while getopts :n:i:o:c:f:d:huSmeCv args; do
             echo "  -f [Paths/Bundle IDs]    Specify the files or tweak Bundle IDs to import"
             echo "  -d [Names]               From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject"
             echo "  -c [Version]             Set custom version for output ipa"
-            echo "  -h                       Print this help menu"
             echo "  -u                       Remove UISupportedDevices from Info.plist"
             echo "  -v                       Enable Verbose Mode"
             echo "  -m                       Enables the manual dylib selection 'UI'"
-            echo "  -C                       Disables Aatomatic cleanup"
+            echo "  -C                       Disables Automatic cleanup"
             echo "  -s                       Fakesigns iPA for use with AppSync"
             echo "  -e                       Removes App Extensions"
+            echo "  -h                       Print this help menu"
             echo
             echo "Examples:"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
@@ -167,23 +175,6 @@ while getopts :n:i:o:c:f:d:huSmeCv args; do
             ;;
     esac
 done
-
-# GET IPA
-if [ -z "$ipadir" ]; then while
-    printf 'Path to IPA: '
-    read ipa
-    ipadir=$(eval "echo \$ipa")
-    [ -z "$ipadir" ] && echo "I need the IPA to make your app."
-do true; done; fi
-
-# VERBOSE
-if [ -n "$v" ]; then
-    if [ -f "$ipadir" ]; then
-        echo "Path to IPA is $ipadir"
-    else
-        echo "Invalid Path to IPA"
-    fi
-fi
 
 # GET FILES
 if [ -z "$files" ]; then while
@@ -227,7 +218,7 @@ do true; done; fi
 
 tweakid="$RANDOM"
 mkdir -p "$(dirname "$outdir/$name")"
-Verbose "Output Directory is $(dirname "$outdir/$name")" "$(dirname "$outdir/$name") is an invalid output directory"
+Verbose "Output Directory is $(dirname "$outdir/$name")" "$(dirname "$outdir/$name") is an invalid output directory" -v
 
 # .TMP DIRECTORIES
 dir="$(mktemp -d)"
@@ -238,14 +229,62 @@ mkdir -p "$dir/$tweakid/Custom"
 Verbose "$dir/$tweakid/Custom has been created" "Couldn't create $dir/$tweakid/Custom" -v
 cd "$dir/$tweakid"
 
+# GET IPA
+if [ -z "$ipadir" ]; then while
+    printf 'Path to IPA: '
+    read ipa
+    ipadir=$(eval "echo \$ipa")
+    [ -z "$ipadir" ] && echo "I need the IPA to make your app."
+do true; done; fi
+
+if [[ ! -f "$ipadir" && -n "$iOS" ]]; then
+    while read i; do
+        if [ "$("$plutil" -key MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+            echo "Decrypting App..."
+            mkdir -p Payload
+            rsync -a $(dirname "$i")/*.app Payload
+            while read i; do
+                if [ -n "$("$otool" -l "$i" | grep "cryptid 1")" ]; then
+                    flexdecrypt "$i" --output "$i" &>/dev/null
+                fi
+            done < <(find Payload/*.app -type f ! -name "*.*" -o -iname "*.dylib")
+            decrypted=1
+            echo "Decrypted App"
+            break
+        fi
+    done < <(find /var/containers/Bundle/Application -iname .com.apple.mobile_container_manager.metadata.plist)
+
+    if [ -z "$decrypted" ]; then
+        echo "Couldn't find app"
+        exit 1
+    fi
+fi
+
+if [ -n "$v" ]; then
+    if [ -f "$ipadir" ]; then
+        echo "Path to IPA is $ipadir"
+    else
+        if [ -n "$decrypted" ]; then
+            echo "BundleID of App is $ipadir"
+        fi
+    fi
+fi
+
+if [[ ! -f "$ipadir" && -z "$decrypted" ]]; then
+    echo "Invalid iPA"
+    exit 1
+fi
+
 # EXTRACT IPA
-echo "Extracting iPA..."
-eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
-Verbose "IPA extracted" "Couldn't extract IPA"
+if [ -z "$decrypted" ]; then
+    echo "Extracting iPA..."
+    eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
+    Verbose "IPA extracted" "Couldn't extract IPA"
+fi
 
 if [ -n "$e" ]; then
     echo "Removing Extensions..."
-    rm -rf Payload/*.app/Plugins/
+    rm -rf Payload/*.app/Plugins
     Verbose "Removed Extensions" "Couldn't Remove Extensions"
 fi
 executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
@@ -418,7 +457,11 @@ fi
 if [ -n "$u" ]; then
     UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist string)"
     if [ -n "$UISupportedDevices" ]; then
-        "$plutil" -remove UISupportedDevices Payload/*.app/Info.plist
+        if [ -n "$iOS" ]; then
+            "$plutil" -remove -key UISupportedDevices Payload/*.app/Info.plist &>/dev/null
+        else
+            "$plutil" -remove UISupportedDevices Payload/*.app/Info.plist &>/dev/null
+        fi
         Verbose "Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app"
     else
         echo "The specified iPA doesn't have UISupportedDevices"
@@ -426,11 +469,14 @@ if [ -n "$u" ]; then
 fi
 
 if [ -n "$c" ]; then
-    "$plutil" -replace CFBundleVersion -string "$c" Payload/*.app/Info.plist >> /dev/null
-    Verbose "Changed CFBundleVersion to $c" "Couldn't change CFBundleVersion to $c"
-    
-    "$plutil" -replace CFBundleShortVersionString -string "$c" Payload/*.app/Info.plist >> /dev/null
-    Verbose "Changed CFBundleShortVersionString to $c" "Couldn't change CFBundleShortVersionString to $c"
+    if [ -n "$iOS" ]; then
+        "$plutil" -value "$c" -key CFBundleVersion Payload/*.app/Info.plist &>/dev/null
+        "$plutil" -value "$c" -key CFBundleShortVersionString Payload/*.app/Info.plist &>/dev/null
+    else
+        "$plutil" -replace CFBundleVersion -string "$c" Payload/*.app/Info.plist &>/dev/null
+        "$plutil" -replace CFBundleShortVersionString -string "$c" Payload/*.app/Info.plist &>/dev/null
+    fi
+    Verbose "Changed App Version to $c" "Couldn't Change App Version"
 fi
 
 # FAKESIGNING
