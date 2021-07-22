@@ -2,7 +2,9 @@
 
 A tool used to inject jailbreak tweaks into jailed iOS apps.
 
-*Works on macOS Catalina 10.15+*
+### Testers on M1 Macs Needed 
+You can contact me at @al4ise on Twitter if you are willing to help
+
 ## For installation instructions go to [Installation](https://github.com/Al4ise/Azule/wiki)
 
 ## Features
