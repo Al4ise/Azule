@@ -2,6 +2,7 @@
 
 A tool used to inject jailbreak tweaks into jailed iOS apps.
 
+### iOS Support doesn't currently support the Elcubratus bootstrap, only Procursus
 ### Testers on M1 Macs Needed 
 You can contact me at @al4ise on Twitter if you are willing to help
 
