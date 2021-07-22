@@ -18,7 +18,7 @@ case $(uname) in
             azule="$AZULE"
             
             ExtractPlistValue () {
-                "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
+                "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" 2>/dev/null
             }
         else
             jq="jq"
@@ -31,10 +31,15 @@ case $(uname) in
             azule="/var/mobile/Documents/Azule"
             
             ExtractPlistValue () {
-                "$plutil" -key "$1" "$2" >> tmp.plist
+                "$plutil" -key "$1" "$2" >> tmp.plist 2>/dev/null
+                if [ "$?" != "0" ]; then
+                    return 1
+                    rm tmp.plist &>/dev/null
+                fi
                 "$plutil" -convert xml1 tmp.plist &>/dev/null
+                
                 cat tmp.plist | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
-                rm tmp.plist
+                rm tmp.plist &>/dev/null
             }
             iOS=1
         fi
@@ -51,7 +56,7 @@ case $(uname) in
         azule="$AZULE"
         
         ExtractPlistValue () {
-            "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
+            "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" 2>/dev/null
         }
     ;;
 esac
@@ -59,15 +64,7 @@ esac
 # UNNECESSARY FUNCTIONS
 Verbose () {
     tv="$?"
-    if [ "$3" = "-v" ]; then
-        if [ -n "$v" ]; then
-            if [ "$tv" = 0 ]; then
-                echo "$1"
-            else
-                echo "$2"
-            fi
-        fi
-    else
+    if [ "$3" != "-v" ] || [[ "$3" = "-v" && -n "$v" ]]; then
         if [ "$tv" = 0 ]; then
             echo "$1"
         else
@@ -200,6 +197,7 @@ if [ -z "$name" ]; then
 fi
 
 # VERBOSE
+Verbose "Output Name is $name" "$name is an invalid output name" -v
 if [ -n "$v" ]; then
     if [ -n "$name" ]; then
         echo "Output Name is $name"
@@ -243,11 +241,12 @@ if [[ ! -f "$ipadir" && -n "$iOS" ]]; then
             echo "Decrypting App..."
             mkdir -p Payload
             rsync -a $(dirname "$i")/*.app Payload
-            while read i; do
-                if [ -n "$("$otool" -l "$i" | grep "cryptid 1")" ]; then
-                    flexdecrypt "$i" --output "$i" &>/dev/null
+            for i in $(find Payload/*.app/ -name "Info.plist" ); do
+            CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
+                if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+                    flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "$(dirname "$i")/$CFBundleExecutable" &>/dev/null
                 fi
-            done < <(find Payload/*.app -type f ! -name "*.*" -o -iname "*.dylib")
+            done
             decrypted=1
             echo "Decrypted App"
             break
