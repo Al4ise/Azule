@@ -89,7 +89,6 @@ case $(uname) in
                 else
                     echo "Extracting $1..."
                     dpkg -x "$1" "$dir/$tweakid/Tweak"
-                    rm -r "$1"
                 fi
             }
             iOS=1
@@ -385,7 +384,7 @@ executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecut
 Verbose "App executable is $executable" "Couldn't set app executable" -v
 
 for i in "${files[@]}"; do
-    if [[ -f "$i" || -d "$i" ]]; then
+    if [ -f "$i" ] || [ -d "$i" ]; then
         case "$i" in
             *.deb) ExtractDEB "$i" ;;
             
