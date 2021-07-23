@@ -261,7 +261,24 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
             ;;
     esac
 done
-if [[ -z $run || -z $ipadir || -z $outdir ]]; then
+
+# OUTPUT DIRECTORY
+if [ -z "$outdir" ]; then while
+    printf 'Output Directory: '
+    read out
+    outdir=$(eval "echo $out")
+    [ -z "$outdir" ] && echo "I don't want to keep the app for myself."
+do true; done; fi
+
+# GET IPA
+if [ -z "$ipadir" ]; then while
+    printf 'Path to IPA: '
+    read ipa
+    ipadir=$(eval "echo \$ipa")
+    [ -z "$ipadir" ] && echo "I need the IPA to make your app."
+do true; done; fi
+
+if [ -z $run ]; then
     echo "Insufficient Arguements"
     echo "Run "azule -h" for usage instructions"
     exit 1
