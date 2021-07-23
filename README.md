@@ -13,18 +13,12 @@ You can contact me at @al4ise on Twitter if you are willing to help
 * Works for a wide range of tweaks
 * Supports importing tweaks, just through their BundleID. Powered by [Parcility](https://parcility.co)
 * Supports importing multiple tweaks at once
-* Has both a Commnd Line work mode, and (somewhat of) a Graphical UI mode
 * You can always specify custom files and folders to import:
   - .deb .dylib and .framework files will be processed and imported 
   - .bundle and other files will be copied to the root directory of the app
 * Easy to use:
   - Just specify an iPA and a Tweak. Azule will do the rest for you.
   - Includes the commands `azule` and `update-azule` which can be invoked from any terminal window
-
-## Usage
-There are two ways to use Azule:
-* GUI Mode
-* CLI Mode
 
 To see instructions on how to use both, run `azule -h` in any terminal window.
 
