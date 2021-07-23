@@ -167,6 +167,7 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
                 bundle+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
+            run=1
         ;;
         
         p)
@@ -175,6 +176,7 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
                 displayname+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
+            run=1
         ;;
             
         i)
@@ -199,6 +201,7 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
                 c+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
+            run=1
         ;;
             
         f)
@@ -207,6 +210,7 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
                 files+=($(eval "echo \${$OPTIND}"))
                 OPTIND=$((OPTIND + 1))
             done
+            run=1
         ;;
             
         d)
@@ -217,31 +221,21 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
             done
         ;;
             
-        u) u=1 ;;
+        u) u=1 && run=1 ;;
         v) v=1 ;;
         m) m=1 ;;
         C) C=1 ;;
-        e) e=1 ;;
-        S) fakesign=1 ;;
+        e) e=1 && run=1 ;;
+        S) fakesign=1 && run=1 ;;
                 
         h)
             echo "Usage: azule [options]"
-            echo
-            echo "Running the command without any arguments will enter 'GUI' mode"
-            echo
-            echo "GUI mode usage: "
-            echo "  1. Run azule in any terminal window to initialize"
-            echo "  2. Provide the path to a \u001b[1mdecrypted\u001b[0m IPA of the app you are trying to modify."
-            echo "  \u001b[1mEncrypted IPAs don't work\u001b[0m"
-            echo "  3. When asked for Files or Tweak Bundle IDs, you can either provide the local"
-            echo "  paths to the files you wish to inject or type the Bundle IDs of the tweaks"
-            echo "  (This only works if the tweaks can be found on Parcility)"
-            echo "  4. If you provided a tweak, choose the tweak files to inject"
-            echo
-            echo "Options:"
-            echo "  -n [Name]                Specify an Output Name"
+            echo "Mandatory Arguements"
             echo "  -i [Path]                Specify the path to the IPA to patch"
             echo "  -o [Path]                Specify an output directory"
+            echo
+            echo "Optional Arguements"
+            echo "  -n [Name]                Specify an Output Name"
             echo "  -f [Paths/Bundle IDs]    Specify the files or tweak Bundle IDs to import"
             echo "  -d [Names]               From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject"
             echo "  -c [Version]             Set custom version for output ipa"
@@ -267,17 +261,14 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
             ;;
     esac
 done
-
-# GET FILES
-if [ -z "$files" ]; then while
-    printf 'Files or Tweak IDs: '
-    read ff
-    files=( $(eval "echo $ff") )
-    [ -z "$files" ] && echo "If you don't want to inject anything, then just use the IPA you gave me."
-do true; done; fi
+if [[ -z $run || -z $ipadir || -z $outdir ]]; then
+    echo "Insufficient Arguements"
+    echo "Run "azule -h" for usage instructions"
+    exit 1
+fi
 
 # VERBOSE
-if [ -n "$v" ]; then
+if [[ -n "$v" && -n "$files" ]]; then
     for i in "${files[@]}"; do
         echo "$i will be imported"
     done
@@ -300,14 +291,6 @@ if [ -n "$v" ]; then
     fi
 fi
 
-# OUTPUT DIRECTORY
-if [ -z "$outdir" ]; then while
-    printf 'Output Directory: '
-    read out
-    outdir=$(eval "echo $out")
-    [ -z "$outdir" ] && echo "I don't want to keep the app for myself."
-do true; done; fi
-
 tweakid="$RANDOM"
 mkdir -p "$(dirname "$outdir/$name")"
 Verbose "Output Directory is $(dirname "$outdir/$name")" "$(dirname "$outdir/$name") is an invalid output directory" -v
@@ -320,14 +303,6 @@ Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tw
 mkdir -p "$dir/$tweakid/Custom"
 Verbose "$dir/$tweakid/Custom has been created" "Couldn't create $dir/$tweakid/Custom" -v
 cd "$dir/$tweakid"
-
-# GET IPA
-if [ -z "$ipadir" ]; then while
-    printf 'Path to IPA: '
-    read ipa
-    ipadir=$(eval "echo \$ipa")
-    [ -z "$ipadir" ] && echo "I need the IPA to make your app."
-do true; done; fi
 
 if [[ ! -f "$ipadir" && -n "$iOS" ]]; then
     while read i; do
@@ -380,150 +355,153 @@ if [ -n "$e" ]; then
     rm -rf Payload/*.app/Plug*ns
     Verbose "Removed Extensions" "Couldn't Remove Extensions"
 fi
-executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
-Verbose "App executable is $executable" "Couldn't set app executable" -v
 
-for i in "${files[@]}"; do
-    if [ -f "$i" ] || [ -d "$i" ]; then
-        case "$i" in
-            *.deb) ExtractDEB "$i" ;;
-            
-            *.dylib)
-                rsync -a "$i" "$dir/$tweakid/Custom"
-                Verbose "Copied "$(basename "$i")" to work directory" "Couldn't Copy "$(basename "$i")" to work directory" -v
-                
-                inject+=( $(basename "$i") )
-            ;;
+if [ -n "$files" ]; then
+    executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
+    Verbose "App executable is $executable" "Couldn't set app executable" -v
 
-            *.framework)
-                rsync -a "$i" Payload/*.app/Frameworks
-                Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
-                
-                inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i"/Info.plist string)" )
-            ;;
+    for i in "${files[@]}"; do
+        if [ -f "$i" ] || [ -d "$i" ]; then
+            case "$i" in
+                *.deb) ExtractDEB "$i" ;;
             
-            *)
-                rsync -a "$i" Payload/*.app
-                Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
-            ;;
-        esac
-    else
-        if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
-            ExtractDEB "$i" fetch
+                *.dylib)
+                    rsync -a "$i" "$dir/$tweakid/Custom"
+                    Verbose "Copied "$(basename "$i")" to work directory" "Couldn't Copy "$(basename "$i")" to work directory" -v
+                    
+                    inject+=( $(basename "$i") )
+                ;;
+
+                *.framework)
+                    rsync -a "$i" Payload/*.app/Frameworks
+                    Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
+                
+                    inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i"/Info.plist string)" )
+                ;;
+            
+                *)
+                    rsync -a "$i" Payload/*.app
+                    Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
+                ;;
+            esac
         else
-            echo "$i isn't available on Parcility. Try getting the files manually. "
-            exit
+            if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
+                ExtractDEB "$i" fetch
+            else
+                echo "$i isn't available on Parcility. Try getting the files manually. "
+                exit
+            fi
         fi
-    fi
-done
+    done
 
 # SPECIFY DYLIBS
-if [ -n "$m" ]; then
-    if [ -n "$(ls -A "$dir/$tweakid/Tweak" 2>/dev/null)" ]; then
-        export COLUMNS=1
-        dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib' -exec basename {} \;) 'Done' )
-        echo $'Available Dylibs: '
-        PS3=$'Choose Dylibs (recommended): '
-        select i in "${dylibs[@]}"; do
-            if [ "$i" = "Done" ]; then break
+    if [ -n "$m" ]; then
+        if [ -n "$(ls -A "$dir/$tweakid/Tweak" 2>/dev/null)" ]; then
+            export COLUMNS=1
+            dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib' -exec basename {} \;) 'Done' )
+            echo $'Available Dylibs: '
+            PS3=$'Choose Dylibs (recommended): '
+            select i in "${dylibs[@]}"; do
+                if [ "$i" = "Done" ]; then break
+                else
+                    inject+=( "$i" )
+                fi
+            done
+        else
+            echo "No dylibs available"
+            pause
+        fi
+    else
+        dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib') )
+
+        for i in "${dylibs[@]}"; do
+            if [[ "$i" =~ "$dir/$tweakid/Tweak/usr/lib/" ]]; then
+                inject+=( "$(basename "$i")" )
             else
-                inject+=( "$i" )
+                identifier="$(ExtractPlistValue Filter ${i%.*}.plist string)"
+                idtype="$(ExtractPlistValue Filter ${i%.*}.plist key)"
+            
+                case "$idtype" in
+                    Bundles)
+                        ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist string)"
+                    
+                        if [[ "$identifier" =~ "$ipabundleid" ]]; then
+                            inject+=( "$(basename "$i")" )
+                        fi
+                    ;;
+            
+                    Executables)
+                        if [[ "$identifier" =~ "$(basename "$executable")" ]]; then
+                            inject+=( "$(basename "$i")" )
+                        fi
+                    ;;
+                
+                esac
             fi
         done
-    else
-        echo "No dylibs available"
-        pause
     fi
-else
-    dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib') )
-
-    for i in "${dylibs[@]}"; do
-        if [[ "$i" =~ "$dir/$tweakid/Tweak/usr/lib/" ]]; then
-            inject+=( "$(basename "$i")" )
-        else
-            identifier="$(ExtractPlistValue Filter ${i%.*}.plist string)"
-            idtype="$(ExtractPlistValue Filter ${i%.*}.plist key)"
-            
-            case "$idtype" in
-                Bundles)
-                    ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist string)"
-                    
-                    if [[ "$identifier" =~ "$ipabundleid" ]]; then
-                        inject+=( "$(basename "$i")" )
-                    fi
-                ;;
-            
-                Executables)
-                    if [[ "$identifier" =~ "$(basename "$executable")" ]]; then
-                        inject+=( "$(basename "$i")" )
-                    fi
-                ;;
-                
-            esac
-        fi
-    done
-fi
 
 # INJECT DYLIBS
-for i in "${inject[@]}"; do
-    find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-    Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
+    for i in "${inject[@]}"; do
+        find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+        Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
         
-    "$insert_dylib" --inplace --all-yes "@rpath/$i" "$executable" &> /dev/null
-    Verbose "Injected $i" "Couldn't inject $i)"
-done
+        "$insert_dylib" --inplace --all-yes "@rpath/$i" "$executable" &> /dev/null
+        Verbose "Injected $i" "Couldn't inject $i)"
+    done
 
-# MOVE BUNDLES
-find "$dir/$tweakid/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*' | while read i; do
-    rsync -a "$i" Payload/*.app/
-    Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
-done
+    # MOVE BUNDLES
+    find "$dir/$tweakid/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*' | while read i; do
+        rsync -a "$i" Payload/*.app/
+        Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
+    done
 
 # FIX LINKS
-rsync -a "$azule"/CydiaSubstrate.framework Payload/*.app/Frameworks
-Verbose "Copied CydiaSubstrate.framework to app directory" "CydiaSubstrate.framework couldn't be copied to app directory"
+    rsync -a "$azule"/CydiaSubstrate.framework Payload/*.app/Frameworks
+    Verbose "Copied CydiaSubstrate.framework to app directory" "CydiaSubstrate.framework couldn't be copied to app directory"
     
-inject+=( CydiaSubstrate.framework/CydiaSubstrate )
+    inject+=( CydiaSubstrate.framework/CydiaSubstrate )
 
-while read i; do
-    rsync -a "$i" Payload/*.app/Frameworks
-    Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
+    while read i; do
+        rsync -a "$i" Payload/*.app/Frameworks
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
 
-    inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist" string)" )
-done < <(find "$dir/$tweakid/Tweak" -iname '*.framework')
+        inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist" string)" )
+    done < <(find "$dir/$tweakid/Tweak" -iname '*.framework')
 
-for i in "${inject[@]}"; do
-    "$ldid" -r Payload/*.app/Frameworks/"$i"
-    Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
+    for i in "${inject[@]}"; do
+        "$ldid" -r Payload/*.app/Frameworks/"$i"
+        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
     
-    links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1 | sort -u) )
-    for l in "${links[@]}"; do
-        for x in "${inject[@]}"; do
-            if [[ "$l" =~ "$x" ]]; then
-                if [[ "$l" =~ "$i" ]]; then
-                    "$install_name_tool" -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
-                    tid=$(( $tid + $? ))
-                    break
-                else
-                    "$install_name_tool" -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
-                    tlnk=$(( $tlnk + $? ))
-                    break
+        links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1 | sort -u) )
+        for l in "${links[@]}"; do
+            for x in "${inject[@]}"; do
+                if [[ "$l" =~ "$x" ]]; then
+                    if [[ "$l" =~ "$i" ]]; then
+                        "$install_name_tool" -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
+                        tid=$(( $tid + $? ))
+                        break
+                    else
+                        "$install_name_tool" -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
+                        tlnk=$(( $tlnk + $? ))
+                        break
+                    fi
                 fi
-            fi
+            done
         done
     done
-done
 
-if [[ "$tid" = 0 || -z "$tid" ]]; then
-    echo "ID Successful"
-else
-    echo "$tid files failed to ID"
-fi
+    if [[ "$tid" = 0 || -z "$tid" ]]; then
+        echo "ID Successful"
+    else
+        echo "$tid files failed to ID"
+    fi
 
-if [[ "$tlnk" = 0 || -z "$tlnk" ]]; then
-    echo "Re-Link Successful"
-else
-    echo "$tlnk Re-Links failed"
+    if [[ "$tlnk" = 0 || -z "$tlnk" ]]; then
+        echo "Re-Link Successful"
+    else
+        echo "$tlnk Re-Links failed"
+    fi
 fi
 
 if [ -n "$u" ]; then
