@@ -29,6 +29,25 @@ case $(uname) in
                 "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" 2>/dev/null
             }
             
+            ExtractDEB () {
+                currentdir="$PWD"
+                mkdir -p ar
+                cd ar
+                if [ "$2" = "fetch" ]; then
+                    echo "Fetching $1..."
+                    curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
+                    Verbose "Fetched "$1"" "Couldn't fetch $1"
+                    "$ar" -x "$1.deb"
+                else
+                    "$ar" -x "$1"
+                fi
+                echo "Extracting $1..."
+                tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
+                Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
+                cd "$currentdir"
+                rm -rf ar
+            }
+            
         else
             jq="jq"
             insert_dylib="insert_dylib"
@@ -58,6 +77,21 @@ case $(uname) in
                 cat tmp.plist | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
                 rm tmp.plist &>/dev/null
             }
+            
+            ExtractDEB () {
+                if [ "$2" = "fetch" ]; then
+                    echo "Fetching $1..."
+                    curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
+                    Verbose "Fetched "$1"" "Couldn't fetch $1"
+                    echo "Extracting $1..."
+                    dpkg -x "$1.deb" "$dir/$tweakid/Tweak"
+                    rm -r "$1.deb"
+                else
+                    echo "Extracting $1..."
+                    dpkg -x "$1" "$dir/$tweakid/Tweak"
+                    rm -r "$1"
+                fi
+            }
             iOS=1
         fi
     ;;
@@ -82,6 +116,25 @@ case $(uname) in
             
         ExtractPlistValue () {
             "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" 2>/dev/null
+        }
+        
+        ExtractDEB () {
+            currentdir="$PWD"
+            mkdir -p ar
+            cd ar
+            if [ "$2" = "fetch" ]; then
+                echo "Fetching $1..."
+                curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
+                Verbose "Fetched "$1"" "Couldn't fetch $1"
+                "$ar" -x "$1.deb"
+            else
+                "$ar" -x "$1"
+            fi
+            echo "Extracting $1..."
+            tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
+            Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
+            cd "$currentdir"
+            rm -rf ar
         }
     ;;
 esac
@@ -199,7 +252,7 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
             echo "  -v                       Enable Verbose Mode"
             echo "  -m                       Enables the manual dylib selection 'UI'"
             echo "  -C                       Disables Automatic cleanup"
-            echo "  -s                       Fakesigns iPA for use with AppSync"
+            echo "  -S                       Fakesigns iPA for use with AppSync"
             echo "  -e                       Removes App Extensions"
             echo "  -h                       Print this help menu"
             echo
@@ -240,7 +293,6 @@ if [ -z "$name" ]; then
 fi
 
 # VERBOSE
-Verbose "Output Name is $name" "$name is an invalid output name" -v
 if [ -n "$v" ]; then
     if [ -n "$name" ]; then
         echo "Output Name is $name"
@@ -335,16 +387,7 @@ Verbose "App executable is $executable" "Couldn't set app executable" -v
 for i in "${files[@]}"; do
     if [[ -f "$i" || -d "$i" ]]; then
         case "$i" in
-            *.deb)
-                mkdir -p ar
-                cd ar
-                "$ar" -x "$i"
-                tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-                Verbose "$(basename "$i") extracted" "Failed to extract $(basename "$i")"
-            
-                cd "$dir/$tweakid"
-                rm -rf ar
-            ;;
+            *.deb) ExtractDEB "$i" ;;
             
             *.dylib)
                 rsync -a "$i" "$dir/$tweakid/Custom"
@@ -367,19 +410,7 @@ for i in "${files[@]}"; do
         esac
     else
         if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
-            mkdir -p ar
-            cd ar
-            echo "Fetching $i..."
-            curl -sSL "$(curl -sS https://api.parcility.co/db/package/$i | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$i.deb"
-            Verbose "Fetched "$i"" "Couldn't fetch $i"
-        
-            echo "Extracting $i..."
-            "$ar" -x "$i.deb"
-            tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-            Verbose "Extracted $(basename "$i")" "Failed to extract $(basename "$i")"
-            
-            cd "$dir/$tweakid"
-            rm -rf ar
+            ExtractDEB "$i" fetch
         else
             echo "$i isn't available on Parcility. Try getting the files manually. "
             exit
