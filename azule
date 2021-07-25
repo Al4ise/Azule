@@ -50,8 +50,16 @@ case $(uname) in
             }
             
             DecryptBinary () {
-                "$AZULE/usr/bin/unfairplay" "$1" "$1" &>/dev/null
+                "$AZULE/usr/bin/unfairplay" "$1" tmp &>/dev/null
+                if [ "$?" = "0" ]; then
+                    mv tmp "$1"
+                else
+                    echo "Couldn't decrypt $1"
+                    return 1
+                    rm -f tmp
+                fi
             }
+            iOS=1
         else
             jq="jq"
             insert_dylib="insert_dylib"
@@ -99,6 +107,10 @@ case $(uname) in
             
             DecryptBinary () {
                 flexdecrypt "$1" --output "$1" &>/dev/null
+                if [ "$?" != "0" ]; then
+                    echo "Couldn't decrypt $1"
+                    return 1
+                fi
             }
             iOS=1
         fi
@@ -270,8 +282,8 @@ while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
             echo "  -C                           Disables Automatic cleanup"
             echo "  -S                           Fakesigns iPA for use with AppSync"
             echo "  -e                           Removes App Extensions"
-            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA [iOS Only]"
-            echo "  -l                           Attempt to decrypt app [iOS Only] (Potentially broken)"
+            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA [iOS Only] (Broken)"
+            echo "  -l                           Attempt to decrypt app [iOS Only] (Potentially Broken)"
             echo "  -h                           Print this help menu"
             echo
             echo "Examples:"
@@ -319,7 +331,7 @@ if [ -z $run ]; then
     )
     
     if [ -n "$iOS" ]; then
-        arguements+=( "Fetch iPA" "Attempt to decrypt App (Potentially Broken)" )
+        arguements+=( "Attempt to decrypt App (Potentially Broken)" )
     fi
     
     arguements+=( "Done" )
@@ -542,7 +554,6 @@ if [ -n "$iOS" ]; then
     fi
 fi
 
-
 if [ -n "$files" ]; then
     executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
     Verbose "App executable is $executable" "Couldn't set app executable" -v
@@ -666,7 +677,7 @@ if [ -n "$files" ]; then
                 if [[ "$l" =~ "$x" ]]; then
                     if [[ "$l" =~ "$i" ]]; then
                         "$install_name_tool" -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
-                        tid=$(( $tid + $? ))
+                        tid=$(( $tid + $ ? ))
                         break
                     else
                         "$install_name_tool" -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
