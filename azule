@@ -50,9 +50,8 @@ case $(uname) in
             }
             
             DecryptBinary () {
-                "$AZULE/usr/bin/unfairplay" "$1" "$i" &>/dev/null
+                "$AZULE/usr/bin/unfairplay" "$1" "$1" &>/dev/null
             }
-            
         else
             jq="jq"
             insert_dylib="insert_dylib"
@@ -73,15 +72,15 @@ case $(uname) in
             }
             
             ExtractPlistValue () {
-                "$plutil" -key "$1" "$2" >> tmp.plist 2>/dev/null
+                "$plutil" -key "$1" "$2" >> tmp 2>/dev/null
                 if [ "$?" != "0" ]; then
+                    rm tmp &>/dev/null
                     return 1
-                    rm tmp.plist &>/dev/null
                 fi
-                "$plutil" -convert xml1 tmp.plist &>/dev/null
+                "$plutil" -convert xml1 tmp &>/dev/null
                 
-                cat tmp.plist | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
-                rm tmp.plist &>/dev/null
+                cat tmp | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
+                rm tmp &>/dev/null
             }
             
             ExtractDEB () {
@@ -99,7 +98,7 @@ case $(uname) in
             }
             
             DecryptBinary () {
-                flexdecrypt "$1" --output "$i" &>/dev/null
+                flexdecrypt "$1" --output "$1" &>/dev/null
             }
             iOS=1
         fi
