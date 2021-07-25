@@ -15,6 +15,7 @@ case $(uname) in
             otool="otool"
             install_name_tool="install_name_tool"
             ldid="$AZULE/usr/bin/ldid"
+            ipatool="$AZULE/usr/bin/ipatool"
             azule="$AZULE"
             
             RemovePlistKey () {
@@ -48,6 +49,10 @@ case $(uname) in
                 rm -rf ar
             }
             
+            DecryptBinary () {
+                "$AZULE/usr/bin/unfairplay" "$1" "$i" &>/dev/null
+            }
+            
         else
             jq="jq"
             insert_dylib="insert_dylib"
@@ -56,6 +61,7 @@ case $(uname) in
             otool="otool"
             install_name_tool="install_name_tool"
             ldid="ldid"
+            ipatool="ipatool-azule"
             azule="/var/mobile/Documents/Azule"
             
             RemovePlistKey () {
@@ -63,7 +69,7 @@ case $(uname) in
             }
             
             ReplacePlistValue () {
-                "$plutil" -value "$1" -key $2 $3 &>/dev/null
+                "$plutil" -value $1 -key $2 $3 &>/dev/null
             }
             
             ExtractPlistValue () {
@@ -90,6 +96,10 @@ case $(uname) in
                     echo "Extracting $1..."
                     dpkg -x "$1" "$dir/$tweakid/Tweak"
                 fi
+            }
+            
+            DecryptBinary () {
+                flexdecrypt "$1" --output "$i" &>/dev/null
             }
             iOS=1
         fi
@@ -151,7 +161,7 @@ Verbose () {
 }
 
 # ARGUEMENTS
-while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
+while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -224,30 +234,46 @@ while getopts :n:i:o:c:b:f:d:p:huSmeCv args; do
         u) u=1 && run=1 ;;
         v) v=1 ;;
         m) m=1 ;;
+        x)
+            if [ -z "$iOS" ]; then
+                echo "-x is not supported on your platform"
+                exit 1
+            fi
+            appleid="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                password=($(eval "echo \${$OPTIND}"))
+                OPTIND=$((OPTIND + 1))
+            done
+            run=1
+        ;;
+        
         C) C=1 ;;
         e) e=1 && run=1 ;;
+        l) ldecrypt=1 && run=1 ;;
         S) fakesign=1 && run=1 ;;
                 
         h)
             echo "Usage: azule [options]"
             echo "Mandatory Arguements"
-            echo "  -i [Path]                Specify the path to the IPA to patch"
-            echo "  -o [Path]                Specify an output directory"
+            echo "  -i [Path]                    Specify the path to the IPA to patch"
+            echo "  -o [Path]                    Specify an output directory"
             echo
             echo "Optional Arguements"
-            echo "  -n [Name]                Specify an Output Name"
-            echo "  -f [Paths/Bundle IDs]    Specify the files or tweak Bundle IDs to import"
-            echo "  -d [Names]               From the .deb files imported, specify the names of the dylibs (e.g: Foo.dylib) to inject"
-            echo "  -c [Version]             Set custom version for output ipa"
-            echo "  -b [BundleId]            Set custom BundleID for output ipa"
-            echo "  -p [Name]                Set custom Display Name for output ipa"
-            echo "  -u                       Remove UISupportedDevices from Info.plist"
-            echo "  -v                       Enable Verbose Mode"
-            echo "  -m                       Enables the manual dylib selection 'UI'"
-            echo "  -C                       Disables Automatic cleanup"
-            echo "  -S                       Fakesigns iPA for use with AppSync"
-            echo "  -e                       Removes App Extensions"
-            echo "  -h                       Print this help menu"
+            echo "  -n [Name]                    Specify an Output Name"
+            echo "  -f [Paths/Bundle IDs]        Specify the files or tweak Bundle IDs to import"
+            echo "  -d [Names]                   Specify the names of the dylibs to inject (Not Recommended)"
+            echo "  -c [Version]                 Set custom version for output ipa"
+            echo "  -b [BundleId]                Set custom BundleID for output ipa"
+            echo "  -p [Name]                    Set custom Display Name for output ipa"
+            echo "  -u                           Remove UISupportedDevices from app"
+            echo "  -v                           Enable Verbose Mode"
+            echo "  -m                           Enables the manual dylib selection 'UI' (Not Recommended)"
+            echo "  -C                           Disables Automatic cleanup"
+            echo "  -S                           Fakesigns iPA for use with AppSync"
+            echo "  -e                           Removes App Extensions"
+            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA [iOS Only]"
+            echo "  -l                           Attempt to decrypt app [iOS Only] (Potentially broken)"
+            echo "  -h                           Print this help menu"
             echo
             echo "Examples:"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
@@ -265,20 +291,133 @@ done
 # OUTPUT DIRECTORY
 if [ -z "$outdir" ]; then while
     printf 'Output Directory: '
-    read out
-    outdir=$(eval "echo $out")
+    read tmp
+    outdir=$(eval "echo $tmp")
     [ -z "$outdir" ] && echo "I don't want to keep the app for myself."
 do true; done; fi
 
 # GET IPA
 if [ -z "$ipadir" ]; then while
     printf 'Path to IPA: '
-    read ipa
-    ipadir=$(eval "echo \$ipa")
+    read tmp
+    ipadir=$(eval "echo \$tmp")
     [ -z "$ipadir" ] && echo "I need the IPA to make your app."
 do true; done; fi
 
 if [ -z $run ]; then
+    PS3=$'Choose Arguements: '
+    arguements=(
+    "Inject Tweaks"
+    "Change Display Name"
+    "Change App Version"
+    "Change BundleID"
+    "Remove UISupportedDevices"
+    "Fakesign iPA"
+    "Remove App Extensions"
+    "Run With Verbose Mode"
+    "Set Custom Output Name"
+    "Manually Inject dylib files (Not Recommended)"
+    )
+    
+    if [ -n "$iOS" ]; then
+        arguements+=( "Fetch iPA" "Attempt to decrypt App (Potentially Broken)" )
+    fi
+    
+    arguements+=( "Done" )
+    select i in "${arguements[@]}"; do
+        case "$i" in
+            "Inject Tweaks")
+                if [ -z "$files" ]; then while
+                    printf 'Files or Tweak IDs: '
+                    read tmp
+                    files=( $(eval "echo $tmp") )
+                    [ -z "$files" ] && echo "No Files Provided"
+                do true; done; fi
+                run=1
+            ;;
+            
+            "Fetch iPA")
+                if [ -z "$appleid" ]; then while
+                    printf 'Apple ID: '
+                    read appleid
+                    [ -z "$appleid" ] && echo "No Apple ID Provided"
+                do true; done; fi
+                
+                if [ -z "$password" ]; then while
+                    printf 'Password for Apple ID: '
+                    read password
+                    [ -z "$password" ] && echo "No Password Provided"
+                do true; done; fi
+                run=1
+            ;;
+            
+            "Set Custom Output Name")
+                if [ -z "$name" ]; then while
+                    printf 'New Display Name: '
+                    read tmp
+                    name=$(eval "echo \$tmp")
+                    [ -z "$name" ] && echo "No Display Name Provided"
+                do true; done; fi
+            ;;
+            
+            "Change Display Name")
+                if [ -z "$displayname" ]; then while
+                    printf 'New Display Name: '
+                    read tmp
+                    displayname=$(eval "echo \$tmp")
+                    [ -z "$displayname" ] && echo "No Display Name Provided"
+                do true; done; fi
+                run=1
+            ;;
+            
+            "Change App Version")
+                if [ -z "$c" ]; then while
+                    printf 'New Version: '
+                    read tmp
+                    c=$(eval "echo \$tmp")
+                    [ -z "$c" ] && echo "No Version Provided"
+                do true; done; fi
+                run=1
+            ;;
+                
+            "Change BundleID")
+                if [ -z "$bundle" ]; then while
+                    printf 'New BundleID: '
+                    read tmp
+                    bundle=$(eval "echo \$tmp")
+                    [ -z "$bundle" ] && echo "No BundleID Provided"
+                do true; done; fi
+                run=1
+            ;;
+                
+            "Remove UISupportedDevices")
+                u=1
+                run=1
+            ;;
+            
+            "Fakesign iPA")
+                fakesign=1
+                run=1
+            ;;
+                
+            "Manually Inject dylib files (Not Recommended)") m=1 ;;
+            "Run With Verbose Mode") v=1 ;;
+            
+            "Remove App Extensions")
+                e=1
+                run=1
+            ;;
+            
+            "Attempt to decrypt App (Potentially Broken)")
+                ldecrypt=1
+                run=1
+            ;;
+            "Done") break ;;
+        esac
+    done
+fi
+
+if [ -z "$run" ]; then
     echo "Insufficient Arguements"
     echo "Run "azule -h" for usage instructions"
     exit 1
@@ -322,26 +461,35 @@ Verbose "$dir/$tweakid/Custom has been created" "Couldn't create $dir/$tweakid/C
 cd "$dir/$tweakid"
 
 if [[ ! -f "$ipadir" && -n "$iOS" ]]; then
-    while read i; do
-        if [ "$("$plutil" -key MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-            echo "Decrypting App..."
-            mkdir -p Payload
-            rsync -a $(dirname "$i")/*.app Payload
-            for i in $(find Payload/*.app/ -name "Info.plist" ); do
-            CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
-                if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
-                    flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "$(dirname "$i")/$CFBundleExecutable" &>/dev/null
-                fi
-            done
-            decrypted=1
-            echo "Decrypted App"
-            break
+    if [ -n "$appleid" ]; then
+        echo "Fetching App..."
+        "$ipatool" download -b "$ipadir" -e "$appleid" -p "$password"
+        if [ "$?" != "0" ]; then
+            echo "Couldn't find app on the App Store"
+            exit 1
         fi
-    done < <(find /var/containers/Bundle/Application -iname .com.apple.mobile_container_manager.metadata.plist)
-
-    if [ -z "$decrypted" ]; then
-        echo "Couldn't find app"
-        exit 1
+        echo "Fetched App"
+        echo "Extracting App"
+        eval "unzip -q '"$dir/$tweakid"/*.ipa' -d $dir/'$tweakid'"
+        Verbose "IPA extracted" "Couldn't extract IPA"
+        unzipped=1
+    else
+        if [ -n "$ldecrypt" ]; then
+            while read i; do
+                if [ "$("$plutil" -key MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                    echo "Preparing App..."
+                    mkdir -p Payload
+                    rsync -a $(dirname "$i")/*.app Payload
+                    unzipped=1
+                    break
+                fi
+            done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+            
+            if [ -z "$unzipped" ]; then
+                echo "Couldn't find app"
+                exit 1
+            fi
+        fi
     fi
 fi
 
@@ -349,29 +497,52 @@ if [ -n "$v" ]; then
     if [ -f "$ipadir" ]; then
         echo "Path to IPA is $ipadir"
     else
-        if [ -n "$decrypted" ]; then
+        if [ -n "$unzipped" ]; then
             echo "BundleID of App is $ipadir"
         fi
     fi
 fi
 
-if [[ ! -f "$ipadir" && -z "$decrypted" ]]; then
+if [[ ! -f "$ipadir" && -z "$unzipped" ]]; then
     echo "Invalid iPA"
     exit 1
 fi
 
 # EXTRACT IPA
-if [ -z "$decrypted" ]; then
+if [ -z "$unzipped" ]; then
     echo "Extracting iPA..."
     eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
     Verbose "IPA extracted" "Couldn't extract IPA"
 fi
 
+# REMOVING PLUGINS
 if [ -n "$e" ]; then
     echo "Removing Extensions..."
     rm -rf Payload/*.app/Plug*ns
     Verbose "Removed Extensions" "Couldn't Remove Extensions"
 fi
+
+# ENCRYPTION CHECK
+if [ -n "$iOS" ]; then
+    echo "Checking for Encrypted Binaries..."
+    for i in $(find Payload/*.app/ -name "Info.plist" ); do
+    CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
+        if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+            if [ -z "$ran" ]; then
+                echo "Decrypting App..."
+            fi
+            DecryptBinary "$(dirname "$i")/$CFBundleExecutable"
+            ran=1
+        fi
+    done
+    
+    if [ -n "$ran" ]; then
+        echo "Decrypted App"
+    else
+        echo "App Was Not Encrypted"
+    fi
+fi
+
 
 if [ -n "$files" ]; then
     executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
@@ -460,10 +631,10 @@ if [ -n "$files" ]; then
 
 # INJECT DYLIBS
     for i in "${inject[@]}"; do
-        find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -iname "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+        find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
         
-        "$insert_dylib" --inplace --all-yes "@rpath/$i" "$executable" &> /dev/null
+        "$insert_dylib" --inplace --weak --all-yes "@rpath/$i" "$executable" &> /dev/null
         Verbose "Injected $i" "Couldn't inject $i)"
     done
 
@@ -556,7 +727,7 @@ fi
 
 # WRAPPING UP
 echo "Generating iPA..."
-eval "zip -rq '$outdir/$name.ipa' Payload"
+eval "zip -rq9 '$outdir/$name.ipa' Payload"
 Verbose "Generated IPA at $outdir/$name.ipa" "Couldn't generate IPA"
 
 if [ -z "$C" ]; then
