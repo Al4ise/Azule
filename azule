@@ -59,7 +59,6 @@ case $(uname) in
                     rm -f tmp
                 fi
             }
-            iOS=1
         else
             jq="jq"
             insert_dylib="insert_dylib"
@@ -677,7 +676,7 @@ if [ -n "$files" ]; then
                 if [[ "$l" =~ "$x" ]]; then
                     if [[ "$l" =~ "$i" ]]; then
                         "$install_name_tool" -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
-                        tid=$(( $tid + $ ? ))
+                        tid=$(( $tid + $? ))
                         break
                     else
                         "$install_name_tool" -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
