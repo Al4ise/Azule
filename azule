@@ -50,15 +50,19 @@ case $(uname) in
             }
             
             DecryptBinary () {
+                "$ldid" -r "$1"
                 "$AZULE/usr/bin/unfairplay" "$1" tmp &>/dev/null
                 if [ "$?" = "0" ]; then
                     mv tmp "$1"
                 else
-                    echo "Couldn't decrypt $1"
+                    if [ "$2" = "-v" ]; then
+                        echo "Couldn't decrypt $1"
+                    fi
                     return 1
                     rm -f tmp
                 fi
             }
+            # MacOS=1
         else
             jq="jq"
             insert_dylib="insert_dylib"
@@ -86,7 +90,7 @@ case $(uname) in
                 fi
                 "$plutil" -convert xml1 tmp &>/dev/null
                 
-                cat tmp | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p"
+                sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" tmp
                 rm tmp &>/dev/null
             }
             
@@ -105,9 +109,12 @@ case $(uname) in
             }
             
             DecryptBinary () {
+                "$ldid" -r "$1"
                 flexdecrypt "$1" --output "$1" &>/dev/null
                 if [ "$?" != "0" ]; then
-                    echo "Couldn't decrypt $1"
+                    if [ "$2" = "-v" ]; then
+                        echo "Couldn't decrypt $1"
+                    fi
                     return 1
                 fi
             }
@@ -130,7 +137,7 @@ case $(uname) in
         }
             
         ReplacePlistValue () {
-            "$plutil" -replace $2 -string "$1" $3 &>/dev/null
+            "$plutil" -replace $2 -string "$1" "$3" &>/dev/null
         }
             
         ExtractPlistValue () {
@@ -242,10 +249,10 @@ while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
         ;;
             
         u) u=1 && run=1 ;;
-        v) v=1 ;;
+        v) v="-v" ;;
         m) m=1 ;;
         x)
-            if [ -z "$iOS" ]; then
+            if [[ -z "$iOS" && -z "$MacOS" ]]; then
                 echo "-x is not supported on your platform"
                 exit 1
             fi
@@ -330,7 +337,10 @@ if [ -z $run ]; then
     )
     
     if [ -n "$iOS" ]; then
-        arguements+=( "Attempt to decrypt App (Potentially Broken)" )
+        arguements+=(
+        "Attempt to decrypt App (Potentially Broken)"
+        "Fetch iPA (Broken)"
+        )
     fi
     
     arguements+=( "Done" )
@@ -346,7 +356,7 @@ if [ -z $run ]; then
                 run=1
             ;;
             
-            "Fetch iPA")
+            "Fetch iPA (Broken)")
                 if [ -z "$appleid" ]; then while
                     printf 'Apple ID: '
                     read appleid
@@ -411,7 +421,7 @@ if [ -z $run ]; then
             ;;
                 
             "Manually Inject dylib files (Not Recommended)") m=1 ;;
-            "Run With Verbose Mode") v=1 ;;
+            "Run With Verbose Mode") v="-v" ;;
             
             "Remove App Extensions")
                 e=1
@@ -470,7 +480,7 @@ mkdir -p "$dir/$tweakid/Custom"
 Verbose "$dir/$tweakid/Custom has been created" "Couldn't create $dir/$tweakid/Custom" -v
 cd "$dir/$tweakid"
 
-if [[ ! -f "$ipadir" && -n "$iOS" ]]; then
+if [ ! -f "$ipadir" ] && [[ -n "$iOS" || -n "$MacOS" ]]; then
     if [ -n "$appleid" ]; then
         echo "Fetching App..."
         "$ipatool" download -b "$ipadir" -e "$appleid" -p "$password"
@@ -533,7 +543,7 @@ if [ -n "$e" ]; then
 fi
 
 # ENCRYPTION CHECK
-if [ -n "$iOS" ]; then
+if [[ -n "$iOS" || -n "$MacOS" ]]; then
     echo "Checking for Encrypted Binaries..."
     for i in $(find Payload/*.app/ -name "Info.plist" ); do
     CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
@@ -541,7 +551,7 @@ if [ -n "$iOS" ]; then
             if [ -z "$ran" ]; then
                 echo "Decrypting App..."
             fi
-            DecryptBinary "$(dirname "$i")/$CFBundleExecutable"
+            DecryptBinary "$(dirname "$i")/$CFBundleExecutable" "$v"
             ran=1
         fi
     done
@@ -670,7 +680,7 @@ if [ -n "$files" ]; then
         "$ldid" -r Payload/*.app/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
     
-        links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | cut -d ' ' -f1 | sort -u) )
+        links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
         for l in "${links[@]}"; do
             for x in "${inject[@]}"; do
                 if [[ "$l" =~ "$x" ]]; then
@@ -736,7 +746,7 @@ fi
 
 # WRAPPING UP
 echo "Generating iPA..."
-eval "zip -rq9 '$outdir/$name.ipa' Payload"
+eval "zip -rq '$outdir/$name.ipa' Payload"
 Verbose "Generated IPA at $outdir/$name.ipa" "Couldn't generate IPA"
 
 if [ -z "$C" ]; then
