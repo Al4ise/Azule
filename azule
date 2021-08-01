@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# CLEAN ON EXIT
-trap "rm -rf $azule/.tmp && exit" SIGINT
-trap "rm -rf $azule/.tmp && exit" EXIT
-
 # PLATFORM SPECIFIC
 case $(uname) in
     Darwin)
         if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
+        
+            ### MacOS
+            
             jq="$AZULE/usr/bin/jq"
             insert_dylib="$AZULE/usr/bin/insert_dylib"
             plutil="plutil"
@@ -36,13 +35,13 @@ case $(uname) in
                 cd ar
                 if [ "$2" = "fetch" ]; then
                     echo "Fetching $1..."
-                    curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
+                    curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                     Verbose "Fetched "$1"" "Couldn't fetch $1"
-                    "$ar" -x "$1.deb"
+                    "$ar" -x "tweak.deb"
                 else
                     "$ar" -x "$1"
                 fi
-                echo "Extracting $1..."
+                echo "Extracting $(basename "$i")..."
                 tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
                 Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
                 cd "$currentdir"
@@ -50,7 +49,6 @@ case $(uname) in
             }
             
             DecryptBinary () {
-                "$ldid" -r "$1"
                 "$AZULE/usr/bin/unfairplay" "$1" tmp &>/dev/null
                 if [ "$?" = "0" ]; then
                     mv tmp "$1"
@@ -64,6 +62,9 @@ case $(uname) in
             }
             # MacOS=1
         else
+        
+            ### iOS
+            
             jq="jq"
             insert_dylib="insert_dylib"
             plutil="plutil"
@@ -96,20 +97,20 @@ case $(uname) in
             
             ExtractDEB () {
                 if [ "$2" = "fetch" ]; then
-                    echo "Fetching $1..."
+                    echo "Fetching "$i"..."
                     curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
-                    Verbose "Fetched "$1"" "Couldn't fetch $1"
+                    Verbose "Fetched $1" "Couldn't fetch $1"
                     echo "Extracting $1..."
                     dpkg -x "$1.deb" "$dir/$tweakid/Tweak"
                     rm -r "$1.deb"
                 else
-                    echo "Extracting $1..."
+                    echo "Extracting $(basename "$i")..."
                     dpkg -x "$1" "$dir/$tweakid/Tweak"
+                    echo "Extracted $(basename "$i")"
                 fi
             }
             
             DecryptBinary () {
-                "$ldid" -r "$1"
                 flexdecrypt "$1" --output "$1" &>/dev/null
                 if [ "$?" != "0" ]; then
                     if [ "$2" = "-v" ]; then
@@ -123,6 +124,9 @@ case $(uname) in
     ;;
     
     Linux)
+    
+        ### Linux
+        
         jq="jq"
         insert_dylib="$AZULE/usr/bin/insert_dylib_linux"
         plutil="$AZULE/usr/bin/plutil"
@@ -150,13 +154,13 @@ case $(uname) in
             cd ar
             if [ "$2" = "fetch" ]; then
                 echo "Fetching $1..."
-                curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
+                curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched "$1"" "Couldn't fetch $1"
-                "$ar" -x "$1.deb"
+                "$ar" -x "tweak.deb"
             else
                 "$ar" -x "$1"
             fi
-            echo "Extracting $1..."
+            echo "Extracting $(basename "$i")..."
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
             cd "$currentdir"
@@ -177,8 +181,8 @@ Verbose () {
     fi
 }
 
-# ARGUEMENTS
-while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
+# CLI ARGUEMENTS
+while getopts :n:i:o:c:a:b:f:d:l:x:p:huSmeCv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -251,6 +255,18 @@ while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
         u) u=1 && run=1 ;;
         v) v="-v" ;;
         m) m=1 ;;
+        a) a=1
+            if [[ -z "$iOS" && -z "$MacOS" ]]; then
+                echo "-a is not supported on your platform"
+                exit 1
+            fi
+            pswd="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                pswd+=" $(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
+            done
+        ;;
+        
         x)
             if [[ -z "$iOS" && -z "$MacOS" ]]; then
                 echo "-x is not supported on your platform"
@@ -266,13 +282,22 @@ while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
         
         C) C=1 ;;
         e) e=1 && run=1 ;;
-        l) ldecrypt=1 && run=1 ;;
+        l)
+            ipadir="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                ipadir+=" $(eval "echo \${$OPTIND}")"
+                OPTIND=$((OPTIND + 1))
+            done
+            ldecrypt=1
+            run=1
+        ;;
+        
         S) fakesign=1 && run=1 ;;
                 
         h)
             echo "Usage: azule [options]"
             echo "Mandatory Arguements"
-            echo "  -i [Path]                    Specify the path to the IPA to patch"
+            echo "  -i/l [Path]                Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
             echo
             echo "Optional Arguements"
@@ -283,6 +308,7 @@ while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
             echo "  -b [BundleId]                Set custom BundleID for output ipa"
             echo "  -p [Name]                    Set custom Display Name for output ipa"
             echo "  -u                           Remove UISupportedDevices from app"
+            echo "  -a [Root Password]           Use APT instead of Parcility [iOS Only]"
             echo "  -v                           Enable Verbose Mode"
             echo "  -m                           Enables the manual dylib selection 'UI' (Not Recommended)"
             echo "  -C                           Disables Automatic cleanup"
@@ -299,7 +325,7 @@ while getopts :n:i:o:c:b:f:d:x:p:huSmelCv args; do
             exit 1
             ;;
         *)
-            echo 'Invalid argument. Run "azule -h" to print the help menu.'
+            echo "Invalid option: $@. Run "azule -h" to print the help menu."
             exit 1
             ;;
     esac
@@ -310,17 +336,10 @@ if [ -z "$outdir" ]; then while
     printf 'Output Directory: '
     read tmp
     outdir=$(eval "echo $tmp")
-    [ -z "$outdir" ] && echo "I don't want to keep the app for myself."
+    [ -z "$outdir" ] && echo "No Output Directory Specified"
 do true; done; fi
 
-# GET IPA
-if [ -z "$ipadir" ]; then while
-    printf 'Path to IPA: '
-    read tmp
-    ipadir=$(eval "echo \$tmp")
-    [ -z "$ipadir" ] && echo "I need the IPA to make your app."
-do true; done; fi
-
+# GUI
 if [ -z $run ]; then
     PS3=$'Choose Arguements: '
     arguements=(
@@ -334,6 +353,7 @@ if [ -z $run ]; then
     "Run With Verbose Mode"
     "Set Custom Output Name"
     "Manually Inject dylib files (Not Recommended)"
+    "Use APT instead of Parcility"
     )
     
     if [ -n "$iOS" ]; then
@@ -357,6 +377,13 @@ if [ -z $run ]; then
             ;;
             
             "Fetch iPA (Broken)")
+                if [ -z "$ipadir" ]; then while
+                    printf 'Path to IPA: '
+                    read tmp
+                    ipadir=$(eval "echo \$tmp")
+                    [ -z "$ipadir" ] && echo "No iPA Specified"
+                do true; done; fi
+                
                 if [ -z "$appleid" ]; then while
                     printf 'Apple ID: '
                     read appleid
@@ -415,6 +442,16 @@ if [ -z $run ]; then
                 run=1
             ;;
             
+            "Use APT instead of Parcility")
+                a=1
+                if [ -z "$pswd" ]; then while
+                    printf 'New Display Name: '
+                    read tmp
+                    pswd=$(eval "echo \$tmp")
+                    [ -z "$pswd" ] && echo "No Password Provided"
+                do true; done; fi
+            ;;
+            
             "Fakesign iPA")
                 fakesign=1
                 run=1
@@ -429,6 +466,13 @@ if [ -z $run ]; then
             ;;
             
             "Attempt to decrypt App (Potentially Broken)")
+                if [ -z "$ipadir" ]; then while
+                    printf 'Path to IPA: '
+                    read tmp
+                    ipadir=$(eval "echo \$tmp")
+                    [ -z "$ipadir" ] && echo "No iPA Specified"
+                do true; done; fi
+                
                 ldecrypt=1
                 run=1
             ;;
@@ -437,6 +481,15 @@ if [ -z $run ]; then
     done
 fi
 
+# GET IPA
+if [ -z "$ipadir" ]; then while
+    printf 'Path to IPA: '
+    read tmp
+    ipadir=$(eval "echo \$tmp")
+    [ -z "$ipadir" ] && echo "No iPA Specified"
+do true; done; fi
+
+# VARIABLE CHECK
 if [ -z "$run" ]; then
     echo "Insufficient Arguements"
     echo "Run "azule -h" for usage instructions"
@@ -450,29 +503,41 @@ if [[ -n "$v" && -n "$files" ]]; then
     done
 fi
 
-# DECLARE $NAME
-if [ -z "$name" ]; then
-    name="$(basename "$ipadir")"
-    for i in "${files[@]}"; do
-        name+="+"$(basename "$i")""
-    done
-fi
-
-# VERBOSE
-if [ -n "$v" ]; then
-    if [ -n "$name" ]; then
-        echo "Output Name is $name"
+# SETTING OUTPUT DIRECTORY AND NAME
+if [ ! -d "$outdir" ]; then
+    if [ "${outdir: -4}" == ".ipa" ]; then
+        output="$outdir"
     else
-        echo "$name is an invalid output name"
+        if [ -z "$name" ]; then
+            name="$(basename "$ipadir")"
+            for i in "${files[@]}"; do
+                name+="+"$(basename "$i")""
+            done
+        fi
+        output="$outdir/$name.ipa"
     fi
+else
+    if [ -z "$name" ]; then
+        name="$(basename "$ipadir")"
+        for i in "${files[@]}"; do
+            name+="+"$(basename "$i")""
+        done
+    fi
+    output="$outdir/$name.ipa"
 fi
 
-tweakid="$RANDOM"
-mkdir -p "$(dirname "$outdir/$name")"
-Verbose "Output Directory is $(dirname "$outdir/$name")" "$(dirname "$outdir/$name") is an invalid output directory" -v
+# CREATING OUTPUT DIRECTORY
+mkdir -p "$(dirname "$output")"
+Verbose "iPA will be written to "$output"" ""$output" is an invalid output path" -v
 
 # .TMP DIRECTORIES
 dir="$(mktemp -d)"
+
+# CLEAN ON EXIT
+trap "rm -rf "$dir" && exit" SIGINT
+trap "rm -rf "$dir" && exit" EXIT
+
+tweakid="$RANDOM"
 mkdir -p "$dir/$tweakid/Tweak"
 Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tweak" -v
 
@@ -480,6 +545,7 @@ mkdir -p "$dir/$tweakid/Custom"
 Verbose "$dir/$tweakid/Custom has been created" "Couldn't create $dir/$tweakid/Custom" -v
 cd "$dir/$tweakid"
 
+# DECRYPTION
 if [ ! -f "$ipadir" ] && [[ -n "$iOS" || -n "$MacOS" ]]; then
     if [ -n "$appleid" ]; then
         echo "Fetching App..."
@@ -509,10 +575,16 @@ if [ ! -f "$ipadir" ] && [[ -n "$iOS" || -n "$MacOS" ]]; then
                 echo "Couldn't find app"
                 exit 1
             fi
+        else
+            echo "UNDER CONSTRUCTION"
+            exit 1
+            #### BFDECRYPT
+            ### NO UNZIPPED
         fi
     fi
 fi
 
+# VERBOSE
 if [ -n "$v" ]; then
     if [ -f "$ipadir" ]; then
         echo "Path to IPA is $ipadir"
@@ -528,7 +600,7 @@ if [[ ! -f "$ipadir" && -z "$unzipped" ]]; then
     exit 1
 fi
 
-# EXTRACT IPA
+# EXTRACTING IPA
 if [ -z "$unzipped" ]; then
     echo "Extracting iPA..."
     eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
@@ -548,14 +620,14 @@ if [[ -n "$iOS" || -n "$MacOS" ]]; then
     for i in $(find Payload/*.app/ -name "Info.plist" ); do
     CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
         if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
-            if [ -z "$ran" ]; then
+           if [ -z "$ran" ]; then
                 echo "Decrypting App..."
             fi
             DecryptBinary "$(dirname "$i")/$CFBundleExecutable" "$v"
             ran=1
         fi
     done
-    
+
     if [ -n "$ran" ]; then
         echo "Decrypted App"
     else
@@ -563,10 +635,14 @@ if [[ -n "$iOS" || -n "$MacOS" ]]; then
     fi
 fi
 
+# PROCESS FILES
 if [ -n "$files" ]; then
+
+    # SET APP EXECUTABLE
     executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
     Verbose "App executable is $executable" "Couldn't set app executable" -v
 
+    # PREPARE FILES
     for i in "${files[@]}"; do
         if [ -f "$i" ] || [ -d "$i" ]; then
             case "$i" in
@@ -592,16 +668,29 @@ if [ -n "$files" ]; then
                 ;;
             esac
         else
-            if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
-                ExtractDEB "$i" fetch
+            # FETCH DEBS
+            if [ -n "$iOS" ] && [ -n "$a" ]; then
+                if [ -z "$rcount" ]; then
+                    echo "Updating Sources..."
+                    echo "$pswd" | sudo -S apt update &>/dev/null
+                fi
+                rcount=1
+                find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb' -exec rm -rf {} \;
+                echo "Fetching "$i""
+                echo "$pswd" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
+                while read i; do ExtractDEB "$i"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
             else
-                echo "$i isn't available on Parcility. Try getting the files manually. "
-                exit
+                if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
+                    ExtractDEB "$i" fetch
+                else
+                    echo "$i isn't available on Parcility. Try getting the files manually. "
+                    exit
+                fi
             fi
         fi
     done
 
-# SPECIFY DYLIBS
+    # SPECIFY DYLIBS
     if [ -n "$m" ]; then
         if [ -n "$(ls -A "$dir/$tweakid/Tweak" 2>/dev/null)" ]; then
             export COLUMNS=1
@@ -620,7 +709,8 @@ if [ -n "$files" ]; then
         fi
     else
         dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib') )
-
+        
+        # CHECK IF DYLIBS ARE INJECTABLE
         for i in "${dylibs[@]}"; do
             if [[ "$i" =~ "$dir/$tweakid/Tweak/usr/lib/" ]]; then
                 inject+=( "$(basename "$i")" )
@@ -648,7 +738,7 @@ if [ -n "$files" ]; then
         done
     fi
 
-# INJECT DYLIBS
+    # INJECT DYLIBS
     for i in "${inject[@]}"; do
         find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
@@ -663,12 +753,13 @@ if [ -n "$files" ]; then
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
     done
 
-# FIX LINKS
+    # MOVE CYDIASUBSTRATE.FRAMEWORK TO APP DIRECTORY
     rsync -a "$azule"/CydiaSubstrate.framework Payload/*.app/Frameworks
     Verbose "Copied CydiaSubstrate.framework to app directory" "CydiaSubstrate.framework couldn't be copied to app directory"
     
     inject+=( CydiaSubstrate.framework/CydiaSubstrate )
 
+    # MOVE OTHER FRAMEWORKS TO APP DIRECTORY
     while read i; do
         rsync -a "$i" Payload/*.app/Frameworks
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
@@ -676,6 +767,7 @@ if [ -n "$files" ]; then
         inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist" string)" )
     done < <(find "$dir/$tweakid/Tweak" -iname '*.framework')
 
+    # FIX LINKS
     for i in "${inject[@]}"; do
         "$ldid" -r Payload/*.app/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
@@ -698,6 +790,7 @@ if [ -n "$files" ]; then
         done
     done
 
+    # VERBOSE
     if [[ "$tid" = 0 || -z "$tid" ]]; then
         echo "ID Successful"
     else
@@ -711,6 +804,7 @@ if [ -n "$files" ]; then
     fi
 fi
 
+# REMOVE UISUPPORTEDDEVICES
 if [ -n "$u" ]; then
     UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist string)"
     if [ -n "$UISupportedDevices" ]; then
@@ -721,16 +815,19 @@ if [ -n "$u" ]; then
     fi
 fi
 
+# CHANGE BUNDLEID
 if [ -n "$bundle" ]; then
     ReplacePlistValue "$bundle" CFBundleIdentifier Payload/*.app/Info.plist
     Verbose "Changed App BundleID to $bundle" "Couldn't Change App BundleID"
 fi
 
+# CHANGE DISPLAY NAME
 if [ -n "$displayname" ]; then
     ReplacePlistValue "$displayname" CFBundleDisplayName Payload/*.app/Info.plist
     Verbose "Changed App Display Name to $displayname" "Couldn't Change App Display Name"
 fi
 
+# CHANGE VERSION
 if [ -n "$c" ]; then
     ReplacePlistValue "$c" CFBundleVersion Payload/*.app/Info.plist
     ReplacePlistValue "$c" CFBundleShortVersionString Payload/*.app/Info.plist
@@ -746,9 +843,10 @@ fi
 
 # WRAPPING UP
 echo "Generating iPA..."
-eval "zip -rq '$outdir/$name.ipa' Payload"
-Verbose "Generated IPA at $outdir/$name.ipa" "Couldn't generate IPA"
+eval "zip -rq '$output' Payload"
+Verbose "Generated IPA at $output" "Couldn't generate IPA"
 
+# VERBOSE
 if [ -z "$C" ]; then
     rm -rf "$dir"
     Verbose "Cleaned up" "Couldn't clean up" -v
