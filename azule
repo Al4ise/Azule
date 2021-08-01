@@ -484,7 +484,7 @@ Verbose "App executable is $executable" "Couldn't set app executable" -v
 echo "Checking for Encrypted Binaries..."
 for i in $(find Payload/*.app/ -name "Info.plist" ); do
     CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
-    if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+    if [[ -n "$CFBundleExecutable" && "$("$otool" -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
         if ! [ "$(dirname "$i")/$CFBundleExecutable" =~ "Payload/PlugIns" ]; then
             echo "Fatal Error: "$(dirname "$i")/$CFBundleExecutable" is encrypted"
             exit 1
