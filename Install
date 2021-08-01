@@ -68,7 +68,7 @@ chmod +x Uninstall
 
 for i in "usr/bin/*"; do chmod +x $i; done
 
-if [ ! -d "$AZULE/CydiaSubstarte.framework" ]; then
+if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
     currentdir="$PWD"
     mkdir -p ar
     cd ar
