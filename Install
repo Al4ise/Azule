@@ -6,6 +6,7 @@ case $(uname) in
     Darwin)
         if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
             ar="ar"
+            plutil="plutil"
     
             # CHECK IF XCODE CLI UTILS EXIST
             xcode-select -p 1>/dev/null
@@ -20,7 +21,10 @@ case $(uname) in
     
     Linux)
         ar="$AZULE/toolchain/usr/bin/ar"
+        plutil="$AZULE/usr/bin/plutil"
+        
         # GET TOOLCHAIN
+        
         mkdir -p $AZULE/toolchain
         if [ ! "$(ls -A $AZULE/toolchain)" ]; then
             echo "Fetching toolchain..."
@@ -66,7 +70,7 @@ if [ ! -d "$AZULE/CydiaSubstarte.framework" ]; then
     "$ar" -x "substrate.deb"
     tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework"
     rm -rf substrate.deb data.tar.lzma CydiaSubstrate.framework/Libraries CydiaSubstrate.framework/Commands
-    plutil -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
+    "$plutil" -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
     mv CydiaSubstrate.framework "$AZULE/CydiaSubstrate.framework"
     cd "$currentdir"
     rm -rf ar
