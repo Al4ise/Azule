@@ -1,132 +1,44 @@
 #!/bin/bash
 
-# PLATFORM SPECIFIC
-case $(uname) in
-    Darwin)
-        if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
-        
-            ### MacOS
-            
-            jq="$AZULE/usr/bin/jq"
-            insert_dylib="$AZULE/usr/bin/insert_dylib"
-            plutil="plutil"
-            ar="ar"
-            otool="otool"
-            install_name_tool="install_name_tool"
-            ldid="$AZULE/usr/bin/ldid"
-            ipatool="$AZULE/usr/bin/ipatool"
-            azule="$AZULE"
-            
-            RemovePlistKey () {
-                "$plutil" -remove $1 $2 &>/dev/null
-            }
-            
-            ReplacePlistValue () {
-                "$plutil" -replace $2 -string "$1" $3 &>/dev/null
-            }
-            
-            ExtractPlistValue () {
-                "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" 2>/dev/null
-            }
-            
-            ExtractDEB () {
-                currentdir="$PWD"
-                mkdir -p ar
-                cd ar
-                if [ "$2" = "fetch" ]; then
-                    echo "Fetching $1..."
-                    curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                    Verbose "Fetched "$1"" "Couldn't fetch $1"
-                    "$ar" -x "tweak.deb"
-                else
-                    "$ar" -x "$1"
-                fi
-                echo "Extracting $(basename "$i")..."
-                tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-                Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
-                cd "$currentdir"
-                rm -rf ar
-            }
-            
-            DecryptBinary () {
-                "$AZULE/usr/bin/unfairplay" "$1" tmp &>/dev/null
-                if [ "$?" = "0" ]; then
-                    mv tmp "$1"
-                else
-                    if [ "$2" = "-v" ]; then
-                        echo "Couldn't decrypt $1"
-                    fi
-                    return 1
-                    rm -f tmp
-                fi
-            }
-            # MacOS=1
-        else
-        
-            ### iOS
-            
-            jq="jq"
-            insert_dylib="insert_dylib"
-            plutil="plutil"
-            ar="ar"
-            otool="otool"
-            install_name_tool="install_name_tool"
-            ldid="ldid"
-            ipatool="ipatool-azule"
-            azule="/var/mobile/Documents/Azule"
-            
-            RemovePlistKey () {
-                "$plutil" -remove -key $1 $2 &>/dev/null
-            }
-            
-            ReplacePlistValue () {
-                "$plutil" -value $1 -key $2 $3 &>/dev/null
-            }
-            
-            ExtractPlistValue () {
-                "$plutil" -key "$1" "$2" >> tmp 2>/dev/null
-                if [ "$?" != "0" ]; then
-                    rm tmp &>/dev/null
-                    return 1
-                fi
-                "$plutil" -convert xml1 tmp &>/dev/null
-                
-                sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" tmp
-                rm tmp &>/dev/null
-            }
-            
-            ExtractDEB () {
-                if [ "$2" = "fetch" ]; then
-                    echo "Fetching "$i"..."
-                    curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
-                    Verbose "Fetched $1" "Couldn't fetch $1"
-                    echo "Extracting $1..."
-                    dpkg -x "$1.deb" "$dir/$tweakid/Tweak"
-                    rm -r "$1.deb"
-                else
-                    echo "Extracting $(basename "$i")..."
-                    dpkg -x "$1" "$dir/$tweakid/Tweak"
-                    echo "Extracted $(basename "$i")"
-                fi
-            }
-            
-            DecryptBinary () {
-                flexdecrypt "$1" --output "$1" &>/dev/null
-                if [ "$?" != "0" ]; then
-                    if [ "$2" = "-v" ]; then
-                        echo "Couldn't decrypt $1"
-                    fi
-                    return 1
-                fi
-            }
-            iOS=1
-        fi
+# SET PLATFORM
+
+case "$(uname -s)" in
+    "Linux") os="Linux" ;;
+    "Darwin")
+        case "$(uname -m)" in
+            "arm64"|"x86_64") os="MacOS" ;;
+            *) os="iOS" ;;
+        esac
+    ;;
+esac
+
+# PLATFORM-SPECIFIC VARIABLES
+
+case "$os" in
+    
+    iOS)
+        jq="jq"
+        insert_dylib="insert_dylib"
+        plutil="plutil"
+        ar="ar"
+        otool="otool"
+        install_name_tool="install_name_tool"
+        ldid="ldid"
+        azule="/var/mobile/Documents/Azule"
+    ;;
+    
+    MacOS)
+        jq="$AZULE/usr/bin/jq"
+        insert_dylib="$AZULE/usr/bin/insert_dylib"
+        plutil="plutil"
+        ar="ar"
+        otool="otool"
+        install_name_tool="install_name_tool"
+        ldid="$AZULE/usr/bin/ldid"
+        azule="$AZULE"
     ;;
     
     Linux)
-    
-        ### Linux
-        
         jq="jq"
         insert_dylib="$AZULE/usr/bin/insert_dylib_linux"
         plutil="$AZULE/usr/bin/plutil"
@@ -135,26 +47,72 @@ case $(uname) in
         install_name_tool="$AZULE/toolchain/usr/bin/install_name_tool"
         ldid="$AZULE/toolchain/usr/bin/ldid"
         azule="$AZULE"
+    ;;
+esac
+
+# PLATFORM-SPECIFIC FUNCTIONS
+
+case "$os" in
+
+    iOS)
+    
+        RemovePlistKey () {
+            "$plutil" -remove -key $1 $2 &>/dev/null
+        }
+    
+        ReplacePlistValue () {
+            "$plutil" -value $1 -key $2 $3 &>/dev/null
+        }
+    
+        ExtractPlistValue () {
+            "$plutil" -key "$1" "$2" >> tmp 2>/dev/null
+            if [ "$?" != "0" ]; then
+                rm tmp &>/dev/null
+                return 1
+            fi
+            "$plutil" -convert xml1 tmp &>/dev/null
         
+            sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" tmp
+            rm tmp &>/dev/null
+        }
+            
+        ExtractDEB () {
+            if [ "$2" = "fetch" ]; then
+                echo "Fetching "$i"..."
+                curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
+                Verbose "Fetched $1" "Couldn't fetch $1"
+                echo "Extracting $1..."
+                dpkg -x "$1.deb" "$dir/$tweakid/Tweak"
+                rm -r "$1.deb"
+            else
+                echo "Extracting $(basename "$i")..."
+                dpkg -x "$1" "$dir/$tweakid/Tweak"
+                echo "Extracted $(basename "$i")"
+            fi
+        }
+    ;;
+    
+    MacOS|Linux)
+    
         RemovePlistKey () {
             "$plutil" -remove $1 $2 &>/dev/null
         }
-            
+        
         ReplacePlistValue () {
-            "$plutil" -replace $2 -string "$1" "$3" &>/dev/null
+            "$plutil" -replace $2 -string "$1" $3 &>/dev/null
         }
-            
+        
         ExtractPlistValue () {
             "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" 2>/dev/null
         }
-        
+            
         ExtractDEB () {
             currentdir="$PWD"
             mkdir -p ar
             cd ar
             if [ "$2" = "fetch" ]; then
                 echo "Fetching $1..."
-                curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
+                curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched "$1"" "Couldn't fetch $1"
                 "$ar" -x "tweak.deb"
             else
@@ -170,6 +128,7 @@ case $(uname) in
 esac
 
 # UNNECESSARY FUNCTIONS
+
 Verbose () {
     tv="$?"
     if [ "$3" != "-v" ] || [[ "$3" = "-v" && -n "$v" ]]; then
@@ -182,7 +141,8 @@ Verbose () {
 }
 
 # CLI ARGUEMENTS
-while getopts :n:i:o:c:a:b:f:d:l:x:p:huSmeCv args; do
+
+while getopts :n:i:o:c:a:b:f:d:p:huSmeCv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -256,7 +216,7 @@ while getopts :n:i:o:c:a:b:f:d:l:x:p:huSmeCv args; do
         v) v="-v" ;;
         m) m=1 ;;
         a) a=1
-            if [[ -z "$iOS" && -z "$MacOS" ]]; then
+            if [ "$os" != "iOS" ]; then
                 echo "-a is not supported on your platform"
                 exit 1
             fi
@@ -267,37 +227,14 @@ while getopts :n:i:o:c:a:b:f:d:l:x:p:huSmeCv args; do
             done
         ;;
         
-        x)
-            if [[ -z "$iOS" && -z "$MacOS" ]]; then
-                echo "-x is not supported on your platform"
-                exit 1
-            fi
-            appleid="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-                password=($(eval "echo \${$OPTIND}"))
-                OPTIND=$((OPTIND + 1))
-            done
-            run=1
-        ;;
-        
         C) C=1 ;;
         e) e=1 && run=1 ;;
-        l)
-            ipadir="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-                ipadir+=" $(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-            ldecrypt=1
-            run=1
-        ;;
-        
         S) fakesign=1 && run=1 ;;
                 
         h)
             echo "Usage: azule [options]"
             echo "Mandatory Arguements"
-            echo "  -i/l [Path]                Specify the path to the IPA to patch"
+            echo "  -i [Path]                    Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
             echo
             echo "Optional Arguements"
@@ -307,15 +244,13 @@ while getopts :n:i:o:c:a:b:f:d:l:x:p:huSmeCv args; do
             echo "  -c [Version]                 Set custom version for output ipa"
             echo "  -b [BundleId]                Set custom BundleID for output ipa"
             echo "  -p [Name]                    Set custom Display Name for output ipa"
-            echo "  -u                           Remove UISupportedDevices from app"
             echo "  -a [Root Password]           Use APT instead of Parcility [iOS Only]"
+            echo "  -u                           Remove UISupportedDevices from app"
             echo "  -v                           Enable Verbose Mode"
             echo "  -m                           Enables the manual dylib selection 'UI' (Not Recommended)"
             echo "  -C                           Disables Automatic cleanup"
             echo "  -S                           Fakesigns iPA for use with AppSync"
             echo "  -e                           Removes App Extensions"
-            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA [iOS Only] (Broken)"
-            echo "  -l                           Attempt to decrypt app [iOS Only] (Potentially Broken)"
             echo "  -h                           Print this help menu"
             echo
             echo "Examples:"
@@ -331,7 +266,8 @@ while getopts :n:i:o:c:a:b:f:d:l:x:p:huSmeCv args; do
     esac
 done
 
-# OUTPUT DIRECTORY
+# READING OUTPUT DIRECTORY
+
 if [ -z "$outdir" ]; then while
     printf 'Output Directory: '
     read tmp
@@ -354,16 +290,9 @@ if [ -z $run ]; then
     "Set Custom Output Name"
     "Manually Inject dylib files (Not Recommended)"
     "Use APT instead of Parcility"
+    "Done"
     )
     
-    if [ -n "$iOS" ]; then
-        arguements+=(
-        "Attempt to decrypt App (Potentially Broken)"
-        "Fetch iPA (Broken)"
-        )
-    fi
-    
-    arguements+=( "Done" )
     select i in "${arguements[@]}"; do
         case "$i" in
             "Inject Tweaks")
@@ -372,28 +301,6 @@ if [ -z $run ]; then
                     read tmp
                     files=( $(eval "echo $tmp") )
                     [ -z "$files" ] && echo "No Files Provided"
-                do true; done; fi
-                run=1
-            ;;
-            
-            "Fetch iPA (Broken)")
-                if [ -z "$ipadir" ]; then while
-                    printf 'Path to IPA: '
-                    read tmp
-                    ipadir=$(eval "echo \$tmp")
-                    [ -z "$ipadir" ] && echo "No iPA Specified"
-                do true; done; fi
-                
-                if [ -z "$appleid" ]; then while
-                    printf 'Apple ID: '
-                    read appleid
-                    [ -z "$appleid" ] && echo "No Apple ID Provided"
-                do true; done; fi
-                
-                if [ -z "$password" ]; then while
-                    printf 'Password for Apple ID: '
-                    read password
-                    [ -z "$password" ] && echo "No Password Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -465,23 +372,13 @@ if [ -z $run ]; then
                 run=1
             ;;
             
-            "Attempt to decrypt App (Potentially Broken)")
-                if [ -z "$ipadir" ]; then while
-                    printf 'Path to IPA: '
-                    read tmp
-                    ipadir=$(eval "echo \$tmp")
-                    [ -z "$ipadir" ] && echo "No iPA Specified"
-                do true; done; fi
-                
-                ldecrypt=1
-                run=1
-            ;;
             "Done") break ;;
         esac
     done
 fi
 
-# GET IPA
+# READING IPA
+
 if [ -z "$ipadir" ]; then while
     printf 'Path to IPA: '
     read tmp
@@ -490,6 +387,7 @@ if [ -z "$ipadir" ]; then while
 do true; done; fi
 
 # VARIABLE CHECK
+
 if [ -z "$run" ]; then
     echo "Insufficient Arguements"
     echo "Run "azule -h" for usage instructions"
@@ -504,6 +402,7 @@ if [[ -n "$v" && -n "$files" ]]; then
 fi
 
 # SETTING OUTPUT DIRECTORY AND NAME
+
 if [ ! -d "$outdir" ]; then
     if [ "${outdir: -4}" == ".ipa" ]; then
         output="$outdir"
@@ -527,13 +426,16 @@ else
 fi
 
 # CREATING OUTPUT DIRECTORY
+
 mkdir -p "$(dirname "$output")"
 Verbose "iPA will be written to "$output"" ""$output" is an invalid output path" -v
 
-# .TMP DIRECTORIES
+# CREATING .TMP DIRECTORIES
+
 dir="$(mktemp -d)"
 
 # CLEAN ON EXIT
+
 trap "rm -rf "$dir" && exit" SIGINT
 trap "rm -rf "$dir" && exit" EXIT
 
@@ -546,103 +448,58 @@ Verbose "$dir/$tweakid/Custom has been created" "Couldn't create $dir/$tweakid/C
 cd "$dir/$tweakid"
 
 # DECRYPTION
-if [ ! -f "$ipadir" ] && [[ -n "$iOS" || -n "$MacOS" ]]; then
-    if [ -n "$appleid" ]; then
-        echo "Fetching App..."
-        "$ipatool" download -b "$ipadir" -e "$appleid" -p "$password"
-        if [ "$?" != "0" ]; then
-            echo "Couldn't find app on the App Store"
-            exit 1
-        fi
-        echo "Fetched App"
-        echo "Extracting App"
-        eval "unzip -q '"$dir/$tweakid"/*.ipa' -d $dir/'$tweakid'"
-        Verbose "IPA extracted" "Couldn't extract IPA"
-        unzipped=1
-    else
-        if [ -n "$ldecrypt" ]; then
-            while read i; do
-                if [ "$("$plutil" -key MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                    echo "Preparing App..."
-                    mkdir -p Payload
-                    rsync -a $(dirname "$i")/*.app Payload
-                    unzipped=1
-                    break
-                fi
-            done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
-            
-            if [ -z "$unzipped" ]; then
-                echo "Couldn't find app"
-                exit 1
-            fi
-        else
-            echo "UNDER CONSTRUCTION"
-            exit 1
-            #### BFDECRYPT
-            ### NO UNZIPPED
-        fi
-    fi
+
+if [ ! -f "$ipadir" ]; then ## DECRYPTION WILL BE iOS ONLY
+    echo "Invalid Path to iPA"
+    exit 1
+    #### BFDECRYPT
 fi
 
 # VERBOSE
 if [ -n "$v" ]; then
-    if [ -f "$ipadir" ]; then
-        echo "Path to IPA is $ipadir"
-    else
-        if [ -n "$unzipped" ]; then
-            echo "BundleID of App is $ipadir"
-        fi
-    fi
-fi
-
-if [[ ! -f "$ipadir" && -z "$unzipped" ]]; then
-    echo "Invalid iPA"
-    exit 1
+    echo "Path to IPA is $ipadir"
 fi
 
 # EXTRACTING IPA
-if [ -z "$unzipped" ]; then
-    echo "Extracting iPA..."
-    eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
-    Verbose "IPA extracted" "Couldn't extract IPA"
-fi
+
+echo "Extracting iPA..."
+eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
+Verbose "IPA extracted" "Couldn't extract IPA"
 
 # REMOVING PLUGINS
+
 if [ -n "$e" ]; then
     echo "Removing Extensions..."
     rm -rf Payload/*.app/Plug*ns
     Verbose "Removed Extensions" "Couldn't Remove Extensions"
 fi
 
+# SETTING APP EXECUTABLE
+
+executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
+Verbose "App executable is $executable" "Couldn't set app executable" -v
+    
 # ENCRYPTION CHECK
-if [[ -n "$iOS" || -n "$MacOS" ]]; then
-    echo "Checking for Encrypted Binaries..."
-    for i in $(find Payload/*.app/ -name "Info.plist" ); do
+
+echo "Checking for Encrypted Binaries..."
+for i in $(find Payload/*.app/ -name "Info.plist" ); do
     CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
-        if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
-           if [ -z "$ran" ]; then
-                echo "Decrypting App..."
-            fi
-            DecryptBinary "$(dirname "$i")/$CFBundleExecutable" "$v"
-            ran=1
+    if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+        if ! [ "$(dirname "$i")/$CFBundleExecutable" =~ "Payload/PlugIns" ]; then
+            echo "Fatal Error: "$(dirname "$i")/$CFBundleExecutable" is encrypted"
+            exit 1
+        else
+            echo ""$(dirname "$i")/$CFBundleExecutable" is encrypted. This may cause problems later on"
         fi
-    done
-
-    if [ -n "$ran" ]; then
-        echo "Decrypted App"
-    else
-        echo "App Was Not Encrypted"
     fi
-fi
+done
 
-# PROCESS FILES
+# PROCESSING FILES
+
 if [ -n "$files" ]; then
 
-    # SET APP EXECUTABLE
-    executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
-    Verbose "App executable is $executable" "Couldn't set app executable" -v
-
-    # PREPARE FILES
+    # PREPARING FILES
+    
     for i in "${files[@]}"; do
         if [ -f "$i" ] || [ -d "$i" ]; then
             case "$i" in
@@ -668,8 +525,10 @@ if [ -n "$files" ]; then
                 ;;
             esac
         else
-            # FETCH DEBS
-            if [ -n "$iOS" ] && [ -n "$a" ]; then
+        
+            # FETCHING DEBS
+            
+            if [ "$os" == "iOS" ] && [ -n "$a" ]; then
                 if [ -z "$rcount" ]; then
                     echo "Updating Sources..."
                     echo "$pswd" | sudo -S apt update &>/dev/null
@@ -693,7 +552,8 @@ if [ -n "$files" ]; then
         fi
     done
 
-    # SPECIFY DYLIBS
+    # SPECIFYING DYLIBS
+    
     if [ -n "$m" ]; then
         if [ -n "$(ls -A "$dir/$tweakid/Tweak" 2>/dev/null)" ]; then
             export COLUMNS=1
@@ -713,7 +573,8 @@ if [ -n "$files" ]; then
     else
         dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib') )
         
-        # CHECK IF DYLIBS ARE INJECTABLE
+        # AUTOMATIC DYLIB SELECTION
+        
         for i in "${dylibs[@]}"; do
             if [[ "$i" =~ "$dir/$tweakid/Tweak/usr/lib/" ]]; then
                 inject+=( "$(basename "$i")" )
@@ -741,7 +602,8 @@ if [ -n "$files" ]; then
         done
     fi
 
-    # INJECT DYLIBS
+    # INJECTING DYLIBS
+    
     for i in "${inject[@]}"; do
         find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
@@ -750,19 +612,22 @@ if [ -n "$files" ]; then
         Verbose "Injected $i" "Couldn't inject $i)"
     done
 
-    # MOVE BUNDLES
+    # MOVING BUNDLES
+    
     find "$dir/$tweakid/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*' | while read i; do
         rsync -a "$i" Payload/*.app/
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
     done
 
-    # MOVE CYDIASUBSTRATE.FRAMEWORK TO APP DIRECTORY
+    # MOVING CYDIASUBSTRATE.FRAMEWORK TO APP DIRECTORY
+    
     rsync -a "$azule"/CydiaSubstrate.framework Payload/*.app/Frameworks
     Verbose "Copied CydiaSubstrate.framework to app directory" "CydiaSubstrate.framework couldn't be copied to app directory"
     
     inject+=( CydiaSubstrate.framework/CydiaSubstrate )
 
-    # MOVE OTHER FRAMEWORKS TO APP DIRECTORY
+    # MOVING OTHER FRAMEWORKS TO APP DIRECTORY
+    
     while read i; do
         rsync -a "$i" Payload/*.app/Frameworks
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
@@ -770,7 +635,8 @@ if [ -n "$files" ]; then
         inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist" string)" )
     done < <(find "$dir/$tweakid/Tweak" -iname '*.framework')
 
-    # FIX LINKS
+    # FIXING LINKS
+    
     for i in "${inject[@]}"; do
         "$ldid" -r Payload/*.app/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
@@ -807,7 +673,8 @@ if [ -n "$files" ]; then
     fi
 fi
 
-# REMOVE UISUPPORTEDDEVICES
+# REMOVING UISUPPORTEDDEVICES
+
 if [ -n "$u" ]; then
     UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist string)"
     if [ -n "$UISupportedDevices" ]; then
@@ -818,19 +685,22 @@ if [ -n "$u" ]; then
     fi
 fi
 
-# CHANGE BUNDLEID
+# CHANGING BUNDLEID
+
 if [ -n "$bundle" ]; then
     ReplacePlistValue "$bundle" CFBundleIdentifier Payload/*.app/Info.plist
     Verbose "Changed App BundleID to $bundle" "Couldn't Change App BundleID"
 fi
 
-# CHANGE DISPLAY NAME
+# CHANGING DISPLAY NAME
+
 if [ -n "$displayname" ]; then
     ReplacePlistValue "$displayname" CFBundleDisplayName Payload/*.app/Info.plist
     Verbose "Changed App Display Name to $displayname" "Couldn't Change App Display Name"
 fi
 
-# CHANGE VERSION
+# CHANGING VERSION
+
 if [ -n "$c" ]; then
     ReplacePlistValue "$c" CFBundleVersion Payload/*.app/Info.plist
     ReplacePlistValue "$c" CFBundleShortVersionString Payload/*.app/Info.plist
@@ -838,6 +708,7 @@ if [ -n "$c" ]; then
 fi
 
 # FAKESIGNING
+
 if [ -n "$fakesign" ]; then
     echo "Fakesigning iPA..."
     "$ldid" -S -M Payload/* &>/dev/null
@@ -845,6 +716,7 @@ if [ -n "$fakesign" ]; then
 fi
 
 # WRAPPING UP
+
 echo "Generating iPA..."
 eval "zip -rq '$output' Payload"
 Verbose "Generated IPA at $output" "Couldn't generate IPA"
