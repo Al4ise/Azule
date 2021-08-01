@@ -673,12 +673,15 @@ if [ -n "$files" ]; then
                 if [ -z "$rcount" ]; then
                     echo "Updating Sources..."
                     echo "$pswd" | sudo -S apt update &>/dev/null
+                    while read g; do echo "$pswd" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
                 fi
                 rcount=1
-                find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb' -exec rm -rf {} \;
                 echo "Fetching "$i""
                 echo "$pswd" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
-                while read i; do ExtractDEB "$i"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+                while read g; do
+                    ExtractDEB "$g"
+                    echo "$pswd" | sudo -S rm -rf "$g"
+                done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
             else
                 if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
                     ExtractDEB "$i" fetch
