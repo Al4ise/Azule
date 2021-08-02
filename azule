@@ -234,7 +234,7 @@ while getopts :n:i:o:c:a:b:f:d:p:huSmeCv args; do
         h)
             echo "Usage: azule [options]"
             echo "Mandatory Arguements"
-            echo "  -i [Path]                    Specify the path to the IPA to patch"
+            echo "  -i [Path/BundleID]                    Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
             echo
             echo "Optional Arguements"
@@ -449,10 +449,61 @@ cd "$dir/$tweakid"
 
 # DECRYPTION
 
-if [ ! -f "$ipadir" ]; then ## DECRYPTION WILL BE iOS ONLY
-    echo "Invalid Path to iPA"
-    exit 1
-    #### BFDECRYPT
+if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
+
+    # BFDECRYPT
+    
+    # GET BINARY
+    while read i; do
+        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i" string)" = "$ipadir" ]; then
+            bfplist="$(find $(dirname "$i")/*.app/ -maxdepth 1 -name Info.plist)"
+            bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
+            break
+        fi
+    done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+    
+    # APP EXISTENCE CHECK
+    if [ -z "$bfbinary" ]; then
+        echo "Invalid App"
+        exit 1
+    fi
+    
+    # GET IPA DIRECTORY
+    while read i; do
+        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i" string)" = "$ipadir" ]; then
+            bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
+            break
+        fi
+    done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist)
+
+    # PRE CLEANUP
+    find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
+
+    # BFDECRYPT SETUP
+    plutil -1 -key "$ipadir" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+
+    # KILL APP
+    PID=`ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ `
+    if [ -n "$PID" ]; then
+        kill -9 "$PID"
+    fi
+
+    # LAUNCH APP
+    open "$ipadir"
+
+    # WAIT FOR IPA
+    until [ -f "$bfipadir" ]; do :; done
+    while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
+
+    # KILL APP
+    PID=`ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ `
+    kill -9 "$PID" &>/dev/null
+    
+    # SET NEW IPADIR
+    ipadir="$bfipadir"
+
+    # CLEANUP
+    plutil -0 -key "$ipadir" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
 fi
 
 # VERBOSE
@@ -465,6 +516,7 @@ fi
 echo "Extracting iPA..."
 eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
 Verbose "IPA extracted" "Couldn't extract IPA"
+rm -rf "$bfipadir"
 
 # REMOVING PLUGINS
 
@@ -481,15 +533,16 @@ Verbose "App executable is $executable" "Couldn't set app executable" -v
     
 # ENCRYPTION CHECK
 
-echo "Checking for Encrypted Binaries..."
-for i in $(find Payload/*.app/ -name "Info.plist" ); do
+for i in $(find Payload/*.app -name "Info.plist" ); do
     CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
     if [[ -n "$CFBundleExecutable" && "$("$otool" -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
-        if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ ".appex" ]]; then
+        if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ ".app/PlugIns" ]]; then
             echo "Fatal Error: "$(dirname "$i")/$CFBundleExecutable" is encrypted"
             exit 1
         else
-            echo ""$(dirname "$i")/$CFBundleExecutable" is encrypted. This may cause problems later on"
+            if [ -n "$v" ]; then
+                echo ""$(dirname "$i")/$CFBundleExecutable" is encrypted. This may cause problems later on"
+            fi
         fi
     fi
 done
@@ -576,7 +629,7 @@ if [ -n "$files" ]; then
         # AUTOMATIC DYLIB SELECTION
         
         for i in "${dylibs[@]}"; do
-            if [[ "$i" =~ "$dir/$tweakid/Tweak/usr/lib/" ]]; then
+            if ! [ -f "${i%.*}.plist" ]; then
                 inject+=( "$(basename "$i")" )
             else
                 identifier="$(ExtractPlistValue Filter ${i%.*}.plist string)"
@@ -606,7 +659,7 @@ if [ -n "$files" ]; then
     
     for i in "${inject[@]}"; do
         find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
-        Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
+        Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory" -v
         
         "$insert_dylib" --inplace --weak --all-yes "@rpath/$i" "$executable" &> /dev/null
         Verbose "Injected $i" "Couldn't inject $i)"
@@ -622,7 +675,7 @@ if [ -n "$files" ]; then
     # MOVING CYDIASUBSTRATE.FRAMEWORK TO APP DIRECTORY
     
     rsync -a "$azule"/CydiaSubstrate.framework Payload/*.app/Frameworks
-    Verbose "Copied CydiaSubstrate.framework to app directory" "CydiaSubstrate.framework couldn't be copied to app directory"
+    Verbose "Copied CydiaSubstrate.framework to app directory" "CydiaSubstrate.framework couldn't be copied to app directory" -v
     
     inject+=( CydiaSubstrate.framework/CydiaSubstrate )
 
