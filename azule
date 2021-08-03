@@ -158,8 +158,7 @@ cleanup () {
 }
 
 # CLI ARGUEMENTS
-
-while getopts :n:i:o:c:a:b:f:d:p:huSmev args; do
+while getopts :n:i:o:c:a:b:x:f:d:p:huSmelv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -220,6 +219,18 @@ while getopts :n:i:o:c:a:b:f:d:p:huSmev args; do
             done
             run=1
         ;;
+        
+        x)
+            if [ "$os" != "iOS" ]; then
+                echo "-x is not supported on your platform"
+                exit 1
+            fi
+            appleid="$OPTARG"
+            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
+                password=($(eval "echo \${$OPTIND}"))
+                OPTIND=$((OPTIND + 1))
+            done
+        ;;
             
         d)
             inject=("$OPTARG")
@@ -237,6 +248,7 @@ while getopts :n:i:o:c:a:b:f:d:p:huSmev args; do
                 echo "-a is not supported on your platform"
                 exit 1
             fi
+            echo "$OPTARG"
             pswd="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 pswd+=" $(eval "echo \${$OPTIND}")"
@@ -245,6 +257,7 @@ while getopts :n:i:o:c:a:b:f:d:p:huSmev args; do
         ;;
         
         e) e=1 && run=1 ;;
+        l) l=1 ;;
         S) fakesign=1 && run=1 ;;
                 
         h)
@@ -260,12 +273,14 @@ while getopts :n:i:o:c:a:b:f:d:p:huSmev args; do
             echo "  -c [Version]                 Set custom version for output ipa"
             echo "  -b [BundleId]                Set custom BundleID for output ipa"
             echo "  -p [Name]                    Set custom Display Name for output ipa"
-            echo "  -a [Root Password]           Use APT instead of Parcility. Leave root password empty for default password [iOS Only]"
+            echo "  -a [Root Password]           Use APT instead of Parcility [iOS Only]"
             echo "  -u                           Remove UISupportedDevices from app"
             echo "  -v                           Enable Verbose Mode"
             echo "  -m                           Enables the manual dylib selection 'UI' (Not Recommended)"
             echo "  -S                           Fakesigns iPA for use with AppSync"
             echo "  -e                           Removes App Extensions"
+            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA [iOS Only]"
+            echo "  -l                           Bypass Updating Outdated Apps"
             echo "  -h                           Print this help menu"
             echo
             echo "Examples:"
@@ -299,6 +314,19 @@ if [ -z "$ipadir" ]; then while
     [ -z "$ipadir" ] && echo "No iPA Specified"
 do true; done; fi
 
+if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
+    
+    # CHECK FOR UPDATES
+    
+    latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
+    
+    if [ -z "$latestv" ]; then
+        echo "Invalid App"
+        exit 1
+    fi
+    run=1
+fi
+
 # GUI
 if [ -z $run ]; then
     PS3=$'Choose Arguements: '
@@ -316,6 +344,10 @@ if [ -z $run ]; then
     "Use APT instead of Parcility"
     "Done"
     )
+    
+    if [ "$os" == "iOS" ]; then
+        arguements+=( "Do Not Update Outdated Apps" )
+    fi
     
     select i in "${arguements[@]}"; do
         case "$i" in
@@ -386,6 +418,8 @@ if [ -z $run ]; then
                 fakesign=1
                 run=1
             ;;
+            
+            "Do Not Update Outdated Apps") l=1 ;;
                 
             "Manually Inject dylib files (Not Recommended)") m=1 ;;
             "Run With Verbose Mode") v="-v" ;;
@@ -482,10 +516,38 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
         fi
     done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
     
-    # APP EXISTENCE CHECK
-    if [ -z "$bfbinary" ]; then
-        echo "Invalid App"
-        exit 1
+    currentv="$(ExtractPlistValue CFBundleVersion "$bfplist")"
+    
+    if [ -n "$currentv" ]; then
+        l+=1
+    fi
+    
+    # INSTALL UPDATES
+    if [[ "$latestv" != "$currentv" && "$l" != "11" ]]; then
+    
+        # VARIABLE CHECK
+        if [ -z "$appleid" ]; then while
+            printf 'Apple ID: '
+            read appleid
+            [ -z "$appleid" ] && echo "No Apple ID Provided"
+        do true; done; fi
+        
+        if [ -z "$password" ]; then while
+            printf 'Password for Apple ID: '
+            read password
+            [ -z "$password" ] && echo "No Password Provided"
+        do true; done; fi
+        
+        ipatool-azule download -b "$ipadir" -e "$appleid" -p "$password"
+        appinst "$dir/$tweakid"/*.ipa
+            
+        while read i; do
+            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                bfplist="$(find $(dirname "$i")/*.app/ -maxdepth 1 -name Info.plist)"
+                bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
+                break
+            fi
+        done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
     fi
     
     # GET IPA DIRECTORY
@@ -494,7 +556,7 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
             bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
             break
         fi
-    done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist)
+    done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
 
     # PRE CLEANUP
     find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
