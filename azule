@@ -140,9 +140,17 @@ Verbose () {
     fi
 }
 
+cleanup () {
+    if [ -f "$dir/$tweakid/bfbackup.plist" ]; then
+        mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
+    fi
+    rm -rf "$dir"
+    exit
+}
+
 # CLI ARGUEMENTS
 
-while getopts :n:i:o:c:a:b:f:d:p:huSmeCv args; do
+while getopts :n:i:o:c:a:b:f:d:p:huSmev args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -227,7 +235,6 @@ while getopts :n:i:o:c:a:b:f:d:p:huSmeCv args; do
             done
         ;;
         
-        C) C=1 ;;
         e) e=1 && run=1 ;;
         S) fakesign=1 && run=1 ;;
                 
@@ -244,11 +251,10 @@ while getopts :n:i:o:c:a:b:f:d:p:huSmeCv args; do
             echo "  -c [Version]                 Set custom version for output ipa"
             echo "  -b [BundleId]                Set custom BundleID for output ipa"
             echo "  -p [Name]                    Set custom Display Name for output ipa"
-            echo "  -a [Root Password]           Use APT instead of Parcility [iOS Only]"
+            echo "  -a [Root Password]           Use APT instead of Parcility. Leave root password empty for default password [iOS Only]"
             echo "  -u                           Remove UISupportedDevices from app"
             echo "  -v                           Enable Verbose Mode"
             echo "  -m                           Enables the manual dylib selection 'UI' (Not Recommended)"
-            echo "  -C                           Disables Automatic cleanup"
             echo "  -S                           Fakesigns iPA for use with AppSync"
             echo "  -e                           Removes App Extensions"
             echo "  -h                           Print this help menu"
@@ -273,6 +279,15 @@ if [ -z "$outdir" ]; then while
     read tmp
     outdir=$(eval "echo $tmp")
     [ -z "$outdir" ] && echo "No Output Directory Specified"
+do true; done; fi
+
+# READING IPA
+
+if [ -z "$ipadir" ]; then while
+    printf 'Path to IPA: '
+    read tmp
+    ipadir=$(eval "echo \$tmp")
+    [ -z "$ipadir" ] && echo "No iPA Specified"
 do true; done; fi
 
 # GUI
@@ -351,12 +366,11 @@ if [ -z $run ]; then
             
             "Use APT instead of Parcility")
                 a=1
-                if [ -z "$pswd" ]; then while
-                    printf 'New Display Name: '
+                if [ -z "$pswd" ]; then
+                    printf 'Root Password (Leave Empty for Default): '
                     read tmp
                     pswd=$(eval "echo \$tmp")
-                    [ -z "$pswd" ] && echo "No Password Provided"
-                do true; done; fi
+                fi
             ;;
             
             "Fakesign iPA")
@@ -377,21 +391,18 @@ if [ -z $run ]; then
     done
 fi
 
-# READING IPA
-
-if [ -z "$ipadir" ]; then while
-    printf 'Path to IPA: '
-    read tmp
-    ipadir=$(eval "echo \$tmp")
-    [ -z "$ipadir" ] && echo "No iPA Specified"
-do true; done; fi
-
 # VARIABLE CHECK
 
 if [ -z "$run" ]; then
     echo "Insufficient Arguements"
     echo "Run "azule -h" for usage instructions"
     exit 1
+fi
+
+# SET ROOT PASSWORD
+
+if [ -z "$pswd" ] && [ -n "$a" ]; then
+    pswd="alpine"
 fi
 
 # VERBOSE
@@ -436,8 +447,8 @@ dir="$(mktemp -d)"
 
 # CLEAN ON EXIT
 
-trap "rm -rf "$dir" && exit" SIGINT
-trap "rm -rf "$dir" && exit" EXIT
+trap "cleanup" SIGINT
+trap "cleanup" EXIT
 
 tweakid="$RANDOM"
 mkdir -p "$dir/$tweakid/Tweak"
@@ -480,7 +491,8 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
     find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
 
     # BFDECRYPT SETUP
-    plutil -1 -key "$ipadir" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+    cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
+    plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
 
     # KILL APP
     PID=`ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ `
@@ -503,7 +515,7 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
     ipadir="$bfipadir"
 
     # CLEANUP
-    plutil -0 -key "$ipadir" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+    mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
 fi
 
 # VERBOSE
@@ -672,21 +684,14 @@ if [ -n "$files" ]; then
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory"
     done
 
-    # MOVING CYDIASUBSTRATE.FRAMEWORK TO APP DIRECTORY
-    
-    rsync -a "$azule"/CydiaSubstrate.framework Payload/*.app/Frameworks
-    Verbose "Copied CydiaSubstrate.framework to app directory" "CydiaSubstrate.framework couldn't be copied to app directory" -v
-    
-    inject+=( CydiaSubstrate.framework/CydiaSubstrate )
-
-    # MOVING OTHER FRAMEWORKS TO APP DIRECTORY
+    # MOVING FRAMEWORKS TO APP DIRECTORY
     
     while read i; do
         rsync -a "$i" Payload/*.app/Frameworks
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
 
         inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist" string)" )
-    done < <(find "$dir/$tweakid/Tweak" -iname '*.framework')
+    done < <(find "$dir/$tweakid/Tweak" "$azule" -iname '*.framework')
 
     # FIXING LINKS
     
@@ -773,9 +778,3 @@ fi
 echo "Generating iPA..."
 eval "zip -rq '$output' Payload"
 Verbose "Generated IPA at $output" "Couldn't generate IPA"
-
-# VERBOSE
-if [ -z "$C" ]; then
-    rm -rf "$dir"
-    Verbose "Cleaned up" "Couldn't clean up" -v
-fi
