@@ -71,8 +71,12 @@ case "$os" in
                 return 1
             fi
             "$plutil" -convert xml1 tmp &>/dev/null
-        
-            sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" tmp
+            
+            if [ -n "$3" ]; then
+                sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp
+            else
+                sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p" tmp
+            fi
             rm tmp &>/dev/null
         }
             
@@ -103,7 +107,12 @@ case "$os" in
         }
         
         ExtractPlistValue () {
-            "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$3">\(.*\)<\/"$3">.*/\1/p" 2>/dev/null
+            if [ -n "$3" ]; then
+                psed="key"
+            else
+                psed="string"
+            fi
+            "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$psed">\(.*\)<\/"$psed">.*/\1/p" 2>/dev/null
         }
             
         ExtractDEB () {
@@ -466,7 +475,7 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
     
     # GET BINARY
     while read i; do
-        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i" string)" = "$ipadir" ]; then
+        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
             bfplist="$(find $(dirname "$i")/*.app/ -maxdepth 1 -name Info.plist)"
             bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
             break
@@ -481,7 +490,7 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
     
     # GET IPA DIRECTORY
     while read i; do
-        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i" string)" = "$ipadir" ]; then
+        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
             bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
             break
         fi
@@ -491,8 +500,10 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
     find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
 
     # BFDECRYPT SETUP
-    cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
-    plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+    if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ "$ipadir" ]]; then
+        cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
+        plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+    fi
 
     # KILL APP
     PID=`ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ `
@@ -515,7 +526,9 @@ if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
     ipadir="$bfipadir"
 
     # CLEANUP
-    mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
+    if [ -f "$dir/$tweakid/bfbackup.plist" ]; then
+        mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
+    fi
 fi
 
 # VERBOSE
@@ -540,13 +553,13 @@ fi
 
 # SETTING APP EXECUTABLE
 
-executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist string)"
+executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist)"
 Verbose "App executable is $executable" "Couldn't set app executable" -v
     
 # ENCRYPTION CHECK
 
 for i in $(find Payload/*.app -name "Info.plist" ); do
-    CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i" string)"
+    CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
     if [[ -n "$CFBundleExecutable" && "$("$otool" -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
         if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ ".app/PlugIns" ]]; then
             echo "Fatal Error: "$(dirname "$i")/$CFBundleExecutable" is encrypted"
@@ -581,7 +594,7 @@ if [ -n "$files" ]; then
                     rsync -a "$i" Payload/*.app/Frameworks
                     Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
                 
-                    inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i"/Info.plist string)" )
+                    inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i"/Info.plist)" )
                 ;;
             
                 *)
@@ -644,12 +657,12 @@ if [ -n "$files" ]; then
             if ! [ -f "${i%.*}.plist" ]; then
                 inject+=( "$(basename "$i")" )
             else
-                identifier="$(ExtractPlistValue Filter ${i%.*}.plist string)"
+                identifier="$(ExtractPlistValue Filter ${i%.*}.plist)"
                 idtype="$(ExtractPlistValue Filter ${i%.*}.plist key)"
             
                 case "$idtype" in
                     Bundles)
-                        ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist string)"
+                        ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist)"
                     
                         if [[ "$identifier" =~ "$ipabundleid" ]]; then
                             inject+=( "$(basename "$i")" )
@@ -690,7 +703,7 @@ if [ -n "$files" ]; then
         rsync -a "$i" Payload/*.app/Frameworks
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
 
-        inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist" string)" )
+        inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
     done < <(find "$dir/$tweakid/Tweak" "$azule" -iname '*.framework')
 
     # FIXING LINKS
@@ -734,7 +747,7 @@ fi
 # REMOVING UISUPPORTEDDEVICES
 
 if [ -n "$u" ]; then
-    UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist string)"
+    UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist)"
     if [ -n "$UISupportedDevices" ]; then
         RemovePlistKey UISupportedDevices Payload/*.app/Info.plist
         Verbose "Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app"
