@@ -62,12 +62,6 @@ while getopts ":fh" args; do
 done
 git pull -q
 
-chmod +x azule
-chmod +x Install
-chmod +x Uninstall
-
-for i in "usr/bin/*"; do chmod +x $i; done
-
 if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
     currentdir="$PWD"
     mkdir -p ar
