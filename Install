@@ -62,21 +62,18 @@ while getopts ":fh" args; do
 done
 git pull -q
 
-chmod +x azule
-chmod +x Install
-chmod +x Uninstall
-
-for i in "usr/bin/*"; do chmod +x $i; done
-
 if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
     currentdir="$PWD"
     mkdir -p ar
     cd ar
     echo "Downloading CydiaSubstrate..."
-    curl -sSLo substrate.deb "http://apt.saurik.com/debs/mobilesubstrate_0.9.6301_iphoneos-arm.deb"
+    curl -sSLo substrate.deb "https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb"
     "$ar" -x "substrate.deb"
-    tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework"
-    rm -rf substrate.deb data.tar.lzma CydiaSubstrate.framework/Libraries CydiaSubstrate.framework/Commands
+    tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
+    rm -rf CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+    mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
+    mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+    rm -rf substrate.deb data.tar.lzma control.tar.gz debian-binary CydiaSubstrate.framework/Libraries cycript0.9 substrate
     "$plutil" -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
     mv CydiaSubstrate.framework "$AZULE/CydiaSubstrate.framework"
     cd "$currentdir"
