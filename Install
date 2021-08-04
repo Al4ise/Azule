@@ -7,7 +7,7 @@ case $(uname) in
         if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
             ar="ar"
             plutil="plutil"
-    
+            jq="$AZULE/usr/bin/jq"
             # CHECK IF XCODE CLI UTILS EXIST
             xcode-select -p 1>/dev/null
             if [ $? != 0 ]; then
@@ -22,7 +22,7 @@ case $(uname) in
     Linux)
         ar="$AZULE/toolchain/usr/bin/ar"
         plutil="$AZULE/usr/bin/plutil"
-        
+        jq="jq"
         # GET TOOLCHAIN
         
         mkdir -p $AZULE/toolchain
@@ -67,7 +67,7 @@ if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
     mkdir -p ar
     cd ar
     echo "Downloading CydiaSubstrate..."
-    curl -sSLo substrate.deb "https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb"
+    curl -sSL "$(curl -sS https://api.parcility.co/db/package/mobilesubstrate/sbingner | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o substrate.deb
     "$ar" -x "substrate.deb"
     tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
     rm -rf CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
