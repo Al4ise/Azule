@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# GET CURRENT DIRECTORY
+
+rootdir="$PWD"
+
 # SET PLATFORM
 
 case "$(uname -s)" in
@@ -140,8 +144,23 @@ Verbose () {
     fi
 }
 
+expand () {
+    cdir="$PWD"
+    cd
+    if ! [[ -f "$1" || -d "$1" ]]; then
+        if [ "$1" != "." ]; then
+            find "$rootdir" -maxdepth 1 -name "$1"
+        else
+            echo "$rootdir"
+        fi
+    else
+        echo "$1"
+    fi
+    cd "$cdir"
+}
+
 cleanup () {
-    if [ -f "$dir/$tweakid/bfbackup.plist" ]; then
+    if [[ "$os" == "iOS" && -f "$dir/$tweakid/bfbackup.plist" ]]; then
         mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
     fi
     rm -rf "$dir"
@@ -203,9 +222,9 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSmewlv args; do
         ;;
             
         f)
-            files=("$OPTARG")
+            files=( "$(expand "$OPTARG")" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
-                files+=($(eval "echo \${$OPTIND}"))
+                files+=( "$(expand "$(eval "echo \${$OPTIND}")")" )
                 OPTIND=$((OPTIND + 1))
             done
             run=1
@@ -239,7 +258,6 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSmewlv args; do
                 echo "-a is not supported on your platform"
                 exit 1
             fi
-            echo "$OPTARG"
             pswd="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z $(eval "echo \${$OPTIND}") ]; do
                 pswd+=" $(eval "echo \${$OPTIND}")"
@@ -255,7 +273,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSmewlv args; do
         h)
             echo "Usage: azule [options]"
             echo "Mandatory Arguements"
-            echo "  -i [Path/BundleID]                    Specify the path to the IPA to patch"
+            echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
             echo
             echo "Optional Arguements"
@@ -294,18 +312,22 @@ done
 if [ -z "$outdir" ]; then while
     printf 'Output Directory: '
     read tmp
-    outdir=$(eval "echo $tmp")
+    outdir="$(eval "echo $tmp")"
     [ -z "$outdir" ] && echo "No Output Directory Specified"
 do true; done; fi
+
+outdir="$(expand "$outdir")"
 
 # READING IPA
 
 if [ -z "$ipadir" ]; then while
     printf 'Path to IPA: '
     read tmp
-    ipadir=$(eval "echo \$tmp")
+    ipadir="$(eval "echo \$tmp")"
     [ -z "$ipadir" ] && echo "No iPA Specified"
 do true; done; fi
+
+ipadir="$(expand "$ipadir")"
 
 if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
     
@@ -481,7 +503,7 @@ fi
 # CREATING OUTPUT DIRECTORY
 
 mkdir -p "$(dirname "$output")"
-Verbose "iPA will be written to "$output"" ""$output" is an invalid output path" -v
+Verbose "iPA will be written to $(eval echo "$output")" "$(eval echo "$output") is an invalid output path" -v
 
 # CREATING .TMP DIRECTORIES
 
@@ -647,11 +669,8 @@ fi
 # PROCESSING FILES
 
 if [ -n "$files" ]; then
-
-    # PREPARING FILES
-    
     for i in "${files[@]}"; do
-        if [ -f "$i" ] || [ -d "$i" ]; then
+        if [[ -f "$i" || -d "$i" ]]; then
             case "$i" in
                 *.deb) ExtractDEB "$i" ;;
             
@@ -664,12 +683,12 @@ if [ -n "$files" ]; then
 
                 *.framework)
                     rsync -a "$i" Payload/*.app/Frameworks
-                    Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
+                    Verbose "Moved "$(basename "$i")" to app directory" "Couldn't Move "$(basename "$i")" to app directory"
                 ;;
             
                 *)
                     rsync -a "$i" Payload/*.app
-                    Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
+                    Verbose "Moved "$(basename "$i")" to app directory" "Couldn't Move "$(basename "$i")" to app directory"
                 ;;
             esac
         else
@@ -693,7 +712,7 @@ if [ -n "$files" ]; then
                 if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
                     ExtractDEB "$i" fetch
                 else
-                    echo "$i isn't available on Parcility. Try getting the files manually. "
+                    echo "$i couldn't be found"
                     exit
                 fi
             fi
@@ -822,10 +841,10 @@ if [ -n "$files" ]; then
      fi
 
      for i in "${inject[@]}"; do
-         links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
+         links=( $(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
          for l in "${links[@]}"; do
              if [[ "$l" =~ "CydiaSubstrate.framework/CydiaSubstrate" || "$l" =~ "libsubstrate.dylib" || "$l" =~ "libsubstitute.dylib" ]]; then
-                 "$install_name_tool" -change "$l" @rpath/"$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
+                 install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
                  status=$(( $tlnk + $? ))
                  break
              fi
