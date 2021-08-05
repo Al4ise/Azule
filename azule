@@ -1,7 +1,5 @@
 #!/bin/bash
 
-export AZULE="~/Azule"
-
 # SET PLATFORM
 
 case "$(uname -s)" in
