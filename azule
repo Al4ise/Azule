@@ -17,32 +17,26 @@ esac
 case "$os" in
     
     iOS)
-        jq="jq"
-        insert_dylib="insert_dylib"
-        plutil="plutil"
-        otool="otool"
-        install_name_tool="install_name_tool"
-        ldid="ldid"
         azule="/var/mobile/Documents/Azule"
     ;;
     
     MacOS)
-        jq="$AZULE/usr/bin/jq"
-        insert_dylib="$AZULE/usr/bin/insert_dylib"
-        plutil="plutil"
-        otool="otool"
-        install_name_tool="install_name_tool"
-        ldid="$AZULE/usr/bin/ldid"
+        # Add tweak tools to PATH
+        if [ -d "$AZULE/bin/darwin" ] ; then
+            PATH="$AZULE/bin/darwin:$PATH"
+        fi
         azule="$AZULE"
     ;;
     
     Linux)
-        jq="jq"
-        insert_dylib="$AZULE/usr/bin/insert_dylib_linux"
-        plutil="$AZULE/usr/bin/plutil"
-        otool="$AZULE/toolchain/bin/otool"
-        install_name_tool="$AZULE/toolchain/bin/install_name_tool"
-        ldid="$AZULE/toolchain/bin/ldid"
+        # Add tweak tools to PATH
+        if [ -d "$AZULE/bin/linux" ] ; then
+            PATH="$AZULE/bin/linux:$PATH"
+        fi
+        # Add toolchain to PATH
+        if [ -d "$AZULE/toolchain/bin" ] ; then
+            PATH="$AZULE/toolchain/bin:$PATH"
+        fi
         azule="$AZULE"
     ;;
 esac
@@ -54,20 +48,20 @@ case "$os" in
     iOS)
     
         RemovePlistKey () {
-            "$plutil" -remove -key $1 $2 &>/dev/null
+            plutil -remove -key $1 $2 &>/dev/null
         }
     
         ReplacePlistValue () {
-            "$plutil" -value $1 -key $2 $3 &>/dev/null
+            plutil -value $1 -key $2 $3 &>/dev/null
         }
     
         ExtractPlistValue () {
-            "$plutil" -key "$1" "$2" >> tmp 2>/dev/null
+            plutil -key "$1" "$2" >> tmp 2>/dev/null
             if [ "$?" != "0" ]; then
                 rm tmp &>/dev/null
                 return 1
             fi
-            "$plutil" -convert xml1 tmp &>/dev/null
+            plutil -convert xml1 tmp &>/dev/null
             
             if [ -n "$3" ]; then
                 sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp
@@ -80,7 +74,7 @@ case "$os" in
         ExtractDEB () {
             if [ "$2" = "fetch" ]; then
                 echo "Fetching "$i"..."
-                curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
+                curl -sSL "$(curl -sS https://api.parcility.co/db/package/$1 | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
                 Verbose "Fetched $1" "Couldn't fetch $1"
                 echo "Extracting $1..."
                 dpkg -x "$1.deb" "$dir/$tweakid/Tweak"
@@ -96,11 +90,11 @@ case "$os" in
     MacOS|Linux)
     
         RemovePlistKey () {
-            "$plutil" -remove $1 $2 &>/dev/null
+            plutil -remove $1 $2 &>/dev/null
         }
         
         ReplacePlistValue () {
-            "$plutil" -replace $2 -string "$1" $3 &>/dev/null
+            plutil -replace $2 -string "$1" $3 &>/dev/null
         }
         
         ExtractPlistValue () {
@@ -109,7 +103,7 @@ case "$os" in
             else
                 psed="string"
             fi
-            "$plutil" -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$psed">\(.*\)<\/"$psed">.*/\1/p" 2>/dev/null
+            plutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<"$psed">\(.*\)<\/"$psed">.*/\1/p" 2>/dev/null
         }
             
         ExtractDEB () {
@@ -118,7 +112,7 @@ case "$os" in
             cd ar
             if [ "$2" = "fetch" ]; then
                 echo "Fetching $1..."
-                curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
+                curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched "$1"" "Couldn't fetch $1"
                 ar -x "tweak.deb"
             else
@@ -637,7 +631,7 @@ if [ -n "$run" ]; then
 
     for i in $(find Payload/*.app -name "Info.plist" ); do
         CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-        if [[ -n "$CFBundleExecutable" && "$("$otool" -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+        if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
             if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ ".app/PlugIns" ]]; then
                 echo "Fatal Error: "$(dirname "$i")/$CFBundleExecutable" is encrypted"
                 exit 1
@@ -698,7 +692,7 @@ if [ -n "$files" ]; then
                     echo "$pswd" | sudo -S rm -rf "$g"
                 done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
             else
-                if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | "$jq" -r .status)" = "true" ]; then
+                if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
                     ExtractDEB "$i" fetch
                 else
                     echo "$i isn't available on Parcility. Try getting the files manually. "
@@ -764,7 +758,7 @@ if [ -n "$files" ]; then
         find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory" -v
         
-        "$insert_dylib" --inplace --weak --all-yes "@rpath/$i" "$executable" &> /dev/null
+        insert_dylib --inplace --weak --all-yes "@rpath/$i" "$executable" &> /dev/null
         Verbose "Injected $i" "Couldn't inject $i)"
     done
 
@@ -787,19 +781,19 @@ if [ -n "$files" ]; then
     # FIXING LINKS
     
     for i in "${inject[@]}"; do
-        "$ldid" -r Payload/*.app/Frameworks/"$i"
+        ldid -r Payload/*.app/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
     
-        links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
+        links=( $(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
         for l in "${links[@]}"; do
             for x in "${inject[@]}"; do
                 if [[ "$l" =~ "$x" ]]; then
                     if [[ "$l" =~ "$i" ]]; then
-                        "$install_name_tool" -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
+                        install_name_tool -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
                         tid=$(( $tid + $? ))
                         break
                     else
-                        "$install_name_tool" -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
+                        install_name_tool -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
                         tlnk=$(( $tlnk + $? ))
                         break
                     fi
@@ -860,7 +854,7 @@ fi
 
 if [ -n "$fakesign" ]; then
     echo "Fakesigning iPA..."
-    "$ldid" -S -M Payload/* &>/dev/null
+    ldid -S -M Payload/* &>/dev/null
     Verbose "Fakesigned iPA" "Couldn't Fakesign iPA"
 fi
 
