@@ -20,7 +20,6 @@ case "$os" in
         jq="jq"
         insert_dylib="insert_dylib"
         plutil="plutil"
-        ar="ar"
         otool="otool"
         install_name_tool="install_name_tool"
         ldid="ldid"
@@ -31,7 +30,6 @@ case "$os" in
         jq="$AZULE/usr/bin/jq"
         insert_dylib="$AZULE/usr/bin/insert_dylib"
         plutil="plutil"
-        ar="ar"
         otool="otool"
         install_name_tool="install_name_tool"
         ldid="$AZULE/usr/bin/ldid"
@@ -42,10 +40,9 @@ case "$os" in
         jq="jq"
         insert_dylib="$AZULE/usr/bin/insert_dylib_linux"
         plutil="$AZULE/usr/bin/plutil"
-        ar="$AZULE/toolchain/usr/bin/ar"
-        otool="$AZULE/toolchain/usr/bin/otool"
-        install_name_tool="$AZULE/toolchain/usr/bin/install_name_tool"
-        ldid="$AZULE/toolchain/usr/bin/ldid"
+        otool="$AZULE/toolchain/bin/otool"
+        install_name_tool="$AZULE/toolchain/bin/install_name_tool"
+        ldid="$AZULE/toolchain/bin/ldid"
         azule="$AZULE"
     ;;
 esac
@@ -123,9 +120,9 @@ case "$os" in
                 echo "Fetching $1..."
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched "$1"" "Couldn't fetch $1"
-                "$ar" -x "tweak.deb"
+                ar -x "tweak.deb"
             else
-                "$ar" -x "$1"
+                ar -x "$1"
             fi
             echo "Extracting $(basename "$i")..."
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
