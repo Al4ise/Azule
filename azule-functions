@@ -72,7 +72,6 @@ function update-azule() {
         case "$args" in
             f)
                 git reset --hard HEAD >> /dev/null
-                rm -rf CydiaSubstrate.framework toolchain
                 ;;
 
             h)
