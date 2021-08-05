@@ -149,7 +149,12 @@ expand () {
     cd
     if ! [[ -f "$1" || -d "$1" ]]; then
         if [ "$1" != "." ]; then
-            find "$rootdir" -maxdepth 1 -name "$1"
+            tmp="$(find "$rootdir" -maxdepth 1 -name "$1")"
+            if [ -z "$tmp" ]; then
+                echo "$1"
+            else
+                echo "$tmp"
+            fi
         else
             echo "$rootdir"
         fi
@@ -329,17 +334,21 @@ do true; done; fi
 
 ipadir="$(expand "$ipadir")"
 
-if [ ! -f "$ipadir" ] && [ "$os" == "iOS" ]; then
-    
-    # CHECK FOR UPDATES
-    
-    latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
-    
-    if [ -z "$latestv" ]; then
-        echo "Invalid App"
+if [ ! -f "$ipadir" ]; then
+    if [ "$os" != "iOS" ]; then
+        echo "Invalid iPA"
         exit 1
+    else
+        # CHECK FOR UPDATES
+    
+        latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
+    
+        if [ -z "$latestv" ]; then
+            echo "Invalid App"
+            exit 1
+        fi
+        drun=1
     fi
-    drun=1
 fi
 
 # GUI
