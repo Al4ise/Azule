@@ -38,7 +38,7 @@ function setup-azule() {
                 TMP=$(mktemp -d)
                 cd $TMP
                 curl -LO https://github.com/CRKatri/llvm-project/releases/download/swift-5.3.2-RELEASE/swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
-                tar -xvf swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
+                tar -xf swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
                 rsync --remove-source-files -a $TMP/swift-5.3.2-RELEASE-ubuntu18.04/* $AZULE/toolchain
                 cd $AZULE
                 rm -rf $TMP
