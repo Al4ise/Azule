@@ -665,8 +665,6 @@ if [ -n "$files" ]; then
                 *.framework)
                     rsync -a "$i" Payload/*.app/Frameworks
                     Verbose "Moved $i to app directory" "Couldn't Move $i to app directory"
-                
-                    inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i"/Info.plist)" )
                 ;;
             
                 *)
@@ -707,7 +705,7 @@ if [ -n "$files" ]; then
     if [ -n "$m" ]; then
         if [ -n "$(ls -A "$dir/$tweakid/Tweak" 2>/dev/null)" ]; then
             export COLUMNS=1
-            dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib' -exec basename {} \;) 'Done' )
+            dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*' -exec basename {} \;) 'Done' )
             echo $'Available Dylibs: '
             PS3=$'Choose Dylibs (recommended): '
             select i in "${dylibs[@]}"; do
@@ -721,7 +719,7 @@ if [ -n "$files" ]; then
             pause
         fi
     else
-        dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib') )
+        dylibs=( $(find "$dir/$tweakid/Tweak" -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*') )
         
         # AUTOMATIC DYLIB SELECTION
         
@@ -755,7 +753,7 @@ if [ -n "$files" ]; then
     # INJECTING DYLIBS
     
     for i in "${inject[@]}"; do
-        find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" -exec rsync -a {} Payload/*.app/Frameworks \;
+        find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec rsync -a {} Payload/*.app/Frameworks \;
         Verbose "Copied "$(basename "$i")" to app directory" ""$(basename "$i")" couldn't be copied to app directory" -v
         
         insert_dylib --inplace --weak --all-yes "@rpath/$i" "$executable" &> /dev/null
@@ -776,7 +774,7 @@ if [ -n "$files" ]; then
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
 
         inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
-    done < <(find "$dir/$tweakid/Tweak" "$azule" -iname '*.framework')
+    done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
     
@@ -814,6 +812,32 @@ if [ -n "$files" ]; then
     else
         echo "$tlnk Re-Links failed"
     fi
+    
+    # INJECT HOOKING LIBRARY
+     hookinglibrary="CydiaSubstrate.framework"
+     rsync -a "$azule"/"$hookinglibrary" Payload/*.app/Frameworks
+
+     if [ -d Payload/*.app/Frameworks/"$hookinglibrary" ]; then
+         hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Frameworks/"$hookinglibrary"/Info.plist)"
+     fi
+
+     for i in "${inject[@]}"; do
+         links=( $("$otool" -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
+         for l in "${links[@]}"; do
+             if [[ "$l" =~ "CydiaSubstrate.framework/CydiaSubstrate" || "$l" =~ "libsubstrate.dylib" || "$l" =~ "libsubstitute.dylib" ]]; then
+                 "$install_name_tool" -change "$l" @rpath/"$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
+                 status=$(( $tlnk + $? ))
+                 break
+             fi
+         done
+     done
+
+     # VERBOSE
+     if [[ "$status" = 0 || -z "$status" ]]; then
+         echo "Injecting "$hookinglibrary" Successful"
+     else
+         echo "Failed injecting "$hookinglibrary" in "$status" files"
+     fi
 fi
 
 # REMOVING UISUPPORTEDDEVICES
