@@ -3,7 +3,7 @@
 # Set Environment Variable
 export AZULE=~/Azule
 
-# Add azule commands to path
+# Add azule commands to PATH
 if [ -d "$HOME/Azule" ] ; then
     PATH="$HOME/Azule:$PATH"
 fi
@@ -13,9 +13,10 @@ function setup-azule() {
     case $(uname) in
         Darwin)
             if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
-                ar="ar"
-                plutil="plutil"
-                jq="$AZULE/usr/bin/jq"
+                # Add tweak tools to PATH
+                if [ -d "$AZULE/bin/darwin" ] ; then
+                    PATH="$AZULE/bin/darwin:$PATH"
+                fi
                 # CHECK IF XCODE CLI UTILS EXIST
                 xcode-select -p 1>/dev/null
                 if [ $? != 0 ]; then
@@ -28,18 +29,19 @@ function setup-azule() {
         ;;
 
         Linux)
-            ar="$AZULE/toolchain/usr/bin/ar"
-            plutil="$AZULE/usr/bin/plutil"
-            jq="jq"
+            # Add tweak tools to PATH
+            if [ -d "$AZULE/bin/linux" ] ; then
+                PATH="$AZULE/bin/linux:$PATH"
+            fi
             # GET TOOLCHAIN
             mkdir -p $AZULE/toolchain
             if [ ! "$(ls -A $AZULE/toolchain)" ]; then
                 echo "Fetching toolchain..."
                 TMP=$(mktemp -d)
                 cd $TMP
-                curl -LO https://github.com/CRKatri/llvm-project/releases/download/swift-5.3.2-RELEASE/swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
-                tar -xf swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
-                rsync --remove-source-files -a $TMP/swift-5.3.2-RELEASE-ubuntu18.04/* $AZULE/toolchain
+                curl -LO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
+                tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
+                rsync --remove-source-files -a $TMP/ios-arm64e-clang-toolchain/* $AZULE/toolchain
                 cd $AZULE
                 rm -rf $TMP
             fi
@@ -50,8 +52,8 @@ function setup-azule() {
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
         cd $TMP
-        curl -sSL "$(curl -sS https://api.parcility.co/db/package/mobilesubstrate/sbingner | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o substrate.deb
-        "$ar" -x "substrate.deb"
+        curl -sSL "$(curl -sS https://api.parcility.co/db/package/mobilesubstrate/sbingner | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o substrate.deb
+        ar -x "substrate.deb"
         tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
@@ -59,7 +61,7 @@ function setup-azule() {
         mv CydiaSubstrate.framework $AZULE/CydiaSubstrate.framework
         cd $AZULE
         rm -rf $TMP
-        "$plutil" -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
+        plutil -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
         echo "Downloaded CydiaSubstrate.framework"
     fi
 }
