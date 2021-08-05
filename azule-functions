@@ -1,0 +1,102 @@
+#!/bin/bash
+
+# Set Environment Variable
+export AZULE=~/Azule
+
+# Add azule commands to path
+if [ -d "$HOME/Azule" ] ; then
+    PATH="$HOME/Azule:$PATH"
+fi
+
+function setup-azule() {
+    cd $AZULE
+    case $(uname) in
+        Darwin)
+            if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
+                ar="ar"
+                plutil="plutil"
+                jq="$AZULE/usr/bin/jq"
+                # CHECK IF XCODE CLI UTILS EXIST
+                xcode-select -p 1>/dev/null
+                if [ $? != 0 ]; then
+                    xcode-select --install
+                fi
+            else
+                echo "You don't need to run this script on iOS"
+                exit 1
+            fi
+        ;;
+
+        Linux)
+            ar="$AZULE/toolchain/usr/bin/ar"
+            plutil="$AZULE/usr/bin/plutil"
+            jq="jq"
+            # GET TOOLCHAIN
+            mkdir -p $AZULE/toolchain
+            if [ ! "$(ls -A $AZULE/toolchain)" ]; then
+                echo "Fetching toolchain..."
+                TMP=$(mktemp -d)
+                cd $TMP
+                curl -LO https://github.com/CRKatri/llvm-project/releases/download/swift-5.3.2-RELEASE/swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
+                tar -xvf swift-5.3.2-RELEASE-ubuntu18.04.tar.zst
+                rsync --remove-source-files -a $TMP/swift-5.3.2-RELEASE-ubuntu18.04/* $AZULE/toolchain
+                cd $AZULE
+                rm -rf $TMP
+            fi
+        ;;
+    esac
+
+    if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
+        echo "Downloading CydiaSubstrate..."
+        TMP=$(mktemp -d)
+        cd $TMP
+        curl -sSL "$(curl -sS https://api.parcility.co/db/package/mobilesubstrate/sbingner | "$jq" -r '.data.repo.url + .data.builds[-1].Filename')" -o substrate.deb
+        "$ar" -x "substrate.deb"
+        tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
+        rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+        mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
+        mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+        mv CydiaSubstrate.framework $AZULE/CydiaSubstrate.framework
+        cd $AZULE
+        rm -rf $TMP
+        "$plutil" -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
+        echo "Downloaded CydiaSubstrate.framework"
+    fi
+}
+
+function update-azule() {
+    cd $AZULE
+    while getopts ":fhr" args; do
+        case "$args" in
+            f)
+                git reset --hard HEAD >> /dev/null
+                rm -rf CydiaSubstrate.framework toolchain
+                ;;
+
+            h)
+                echo "Usage: update-azule [options]"
+                echo
+                echo "Running the command without any arguments will update Azule normally. If"
+                echo "you have made changes to any of Azule's files, the update will be cancelled."
+                echo
+                echo "Options:"
+                echo "  -f     Forcefully update Azule, causing all local changes to be lost."
+                echo "  -r     Redownload the latest mobilesubstrate and linux toolchains."
+                echo "  -h     Print this help menu."
+                exit 0
+                ;;
+
+            r)
+                rm -rf CydiaSubstrate.framework toolchain
+                ;;
+
+            *)
+
+                echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
+                exit 1
+                ;;
+        esac
+    done
+    git pull -q
+    setup-azule
+}
