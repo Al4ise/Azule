@@ -4,8 +4,8 @@
 export AZULE=~/Azule
 
 # Add azule commands to PATH
-if [ -d "$HOME/Azule" ] ; then
-    PATH="$HOME/Azule:$PATH"
+if [ -d "$AZULE" ] ; then
+    PATH="$AZULE:$PATH"
 fi
 
 function setup-azule() {
