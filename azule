@@ -20,28 +20,22 @@ esac
 
 case "$os" in
     
-    iOS)
-        azule="/var/mobile/Documents/Azule"
-    ;;
-    
     MacOS)
         # Add tweak tools to PATH
-        if [ -d "$AZULE/bin/darwin" ] ; then
-            PATH="$AZULE/bin/darwin:$PATH"
+        if [ -d "$HOME/Azule/bin/darwin" ] ; then
+            PATH="$HOME/Azule/bin/darwin:$PATH"
         fi
-        azule="$AZULE"
     ;;
     
     Linux)
         # Add tweak tools to PATH
-        if [ -d "$AZULE/bin/linux" ] ; then
-            PATH="$AZULE/bin/linux:$PATH"
+        if [ -d "$HOME/Azule/bin/linux" ] ; then
+            PATH="$HOME/Azule/bin/linux:$PATH"
         fi
         # Add toolchain to PATH
-        if [ -d "$AZULE/toolchain/bin" ] ; then
-            PATH="$AZULE/toolchain/bin:$PATH"
+        if [ -d "$HOME/Azule/toolchain/bin" ] ; then
+            PATH="$HOME/Azule/toolchain/bin:$PATH"
         fi
-        azule="$AZULE"
     ;;
 esac
 
@@ -843,7 +837,7 @@ if [ -n "$files" ]; then
     
     # INJECT HOOKING LIBRARY
      hookinglibrary="CydiaSubstrate.framework"
-     rsync -a "$azule"/"$hookinglibrary" Payload/*.app/Frameworks
+     rsync -a "$HOME/Azule"/"$hookinglibrary" Payload/*.app/Frameworks
 
      if [ -d Payload/*.app/Frameworks/"$hookinglibrary" ]; then
          hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Frameworks/"$hookinglibrary"/Info.plist)"
