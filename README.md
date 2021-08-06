@@ -35,3 +35,5 @@ Run `update-azule` in any terminal window to update Azule.
 * [Tyilo](https://github.com/Tyilo/insert_dylib) - Created insert_dylib
 * [LeanVel](https://github.com/LeanVel/insert_dylib) - Ported insert_dylib to Linux
 * [screenplaydev](https://github.com/screenplaydev/plutil) - Wrote a Linux alternative for plutil
+* [Majd Alfhaily](https://github.com/majd/ipatool) - Wrote ipatool
+* [dlevi309](https://github.com/dlevi309/ipatool-ios) - Ported ipatool to iOS
