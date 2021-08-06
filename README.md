@@ -31,5 +31,7 @@ Run `update-azule` in any terminal window to update Azule.
 
 ## Credits
 
-* [Kabir Oberai](https://github.com/kabiroberai/theos-jailed) - Idea of jailed tweaks
-* [Tyilo](https://github.com/Tyilo/insert_dylib) - Creator of insert_dylib
+* [Kabir Oberai](https://github.com/kabiroberai/theos-jailed) - Creator of Theos Jailed
+* [Tyilo](https://github.com/Tyilo/insert_dylib) - Created insert_dylib
+* [LeanVel](https://github.com/LeanVel/insert_dylib) - Ported insert_dylib to Linux
+* [screenplaydev](https://github.com/screenplaydev/plutil) - Wrote a Linux alternative for plutil
