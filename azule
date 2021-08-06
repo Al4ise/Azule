@@ -19,17 +19,11 @@ esac
 # PLATFORM-SPECIFIC VARIABLES
 
 case "$os" in
-    
-    iOS)
-        azule="/var/mobile/Azule"
-    ;;
-    
     MacOS)
         # Add tweak tools to PATH
         if [ -d "$AZULE/bin/darwin" ] ; then
             PATH="$AZULE/bin/darwin:$PATH"
         fi
-        azule="$AZULE"
     ;;
     
     Linux)
@@ -41,7 +35,6 @@ case "$os" in
         if [ -d "$AZULE/toolchain/bin" ] ; then
             PATH="$AZULE/toolchain/bin:$PATH"
         fi
-        azule="$AZULE"
     ;;
 esac
 
@@ -147,19 +140,19 @@ Verbose () {
 expand () {
     cdir="$PWD"
     cd
-    if ! [[ -f "$1" || -d "$1" ]]; then
-        if [ "$1" != "." ]; then
+    if [ "$1" == "." ]; then
+        echo "$rootdir"
+    else
+        if [[ -f "$1" || -d "$1" ]]; then
+            echo "$1"
+        else
             tmp="$(find "$rootdir" -maxdepth 1 -name "$1")"
             if [ -z "$tmp" ]; then
                 echo "$1"
             else
                 echo "$tmp"
             fi
-        else
-            echo "$rootdir"
         fi
-    else
-        echo "$1"
     fi
     cd "$cdir"
 }
@@ -842,8 +835,13 @@ if [ -n "$files" ]; then
     fi
     
     # INJECT HOOKING LIBRARY
-     hookinglibrary="CydiaSubstrate.framework"
-     rsync -a "$azule"/"$hookinglibrary" Payload/*.app/Frameworks
+    hookinglibrary="CydiaSubstrate.framework"
+    
+    if [ "$os" == "iOS" ]
+        rsync -a /var/mobile/Azule/"$hookinglibrary" Payload/*.app/Frameworks
+    else
+        rsync -a $AZULE/"$hookinglibrary" Payload/*.app/Frameworks
+    fi
 
      if [ -d Payload/*.app/Frameworks/"$hookinglibrary" ]; then
          hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Frameworks/"$hookinglibrary"/Info.plist)"
