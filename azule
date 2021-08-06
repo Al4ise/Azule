@@ -21,7 +21,7 @@ esac
 case "$os" in
     
     iOS)
-        azule="/var/mobile/Documents/Azule"
+        azule="/var/mobile/Azule"
     ;;
     
     MacOS)
