@@ -837,33 +837,33 @@ if [ -n "$files" ]; then
     # INJECT HOOKING LIBRARY
     hookinglibrary="CydiaSubstrate.framework"
     
-    if [ "$os" == "iOS" ]
+    if [ "$os" == "iOS" ]; then
         rsync -a /var/mobile/Azule/"$hookinglibrary" Payload/*.app/Frameworks
     else
         rsync -a $AZULE/"$hookinglibrary" Payload/*.app/Frameworks
     fi
 
-     if [ -d Payload/*.app/Frameworks/"$hookinglibrary" ]; then
-         hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Frameworks/"$hookinglibrary"/Info.plist)"
-     fi
+    if [ -d Payload/*.app/Frameworks/"$hookinglibrary" ]; then
+        hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Frameworks/"$hookinglibrary"/Info.plist)"
+    fi
 
-     for i in "${inject[@]}"; do
-         links=( $(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
-         for l in "${links[@]}"; do
-             if [[ "$l" =~ "CydiaSubstrate.framework/CydiaSubstrate" || "$l" =~ "libsubstrate.dylib" || "$l" =~ "libsubstitute.dylib" ]]; then
-                 install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
-                 status=$(( $tlnk + $? ))
-                 break
-             fi
-         done
-     done
+    for i in "${inject[@]}"; do
+        links=( $(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1) )
+        for l in "${links[@]}"; do
+            if [[ "$l" =~ "CydiaSubstrate.framework/CydiaSubstrate" || "$l" =~ "libsubstrate.dylib" || "$l" =~ "libsubstitute.dylib" ]]; then
+                install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
+                status=$(( $tlnk + $? ))
+                break
+            fi
+        done
+    done
 
-     # VERBOSE
-     if [[ "$status" = 0 || -z "$status" ]]; then
-         echo "Injecting "$hookinglibrary" Successful"
-     else
-         echo "Failed injecting "$hookinglibrary" in "$status" files"
-     fi
+    # VERBOSE
+    if [[ "$status" = 0 || -z "$status" ]]; then
+        echo "Injecting "$hookinglibrary" Successful"
+    else
+        echo "Failed injecting "$hookinglibrary" in "$status" files"
+    fi
 fi
 
 # REMOVING UISUPPORTEDDEVICES
