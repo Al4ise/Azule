@@ -1,22 +1,23 @@
 #!/bin/bash
 
+# Set Environment Variable
+export AZULE=~/Azule
+
 # Add azule commands to PATH
 if [ -d "$HOME/Azule" ] ; then
     PATH="$HOME/Azule:$PATH"
 fi
 
 function setup-azule() {
-    cd $HOME/Azule
+    cd $AZULE
     case $(uname) in
         Darwin)
             if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
                 # Add tweak tools to PATH
-                if [ -d "$HOME/Azule/bin/darwin" ] ; then
-                    PATH="$HOME/Azule/bin/darwin:$PATH"
+                if [ -d "$AZULE/bin/darwin" ] ; then
+                    PATH="$AZULE/bin/darwin:$PATH"
                 fi
-                
                 # CHECK IF XCODE CLI UTILS EXIST
-                
                 xcode-select -p 1>/dev/null
                 if [ $? != 0 ]; then
                     xcode-select --install
@@ -28,30 +29,26 @@ function setup-azule() {
         ;;
 
         Linux)
-        
             # Add tweak tools to PATH
-            
-            if [ -d "$HOME/Azule/bin/linux" ] ; then
-                PATH="$HOME/Azule/bin/linux:$PATH"
+            if [ -d "$AZULE/bin/linux" ] ; then
+                PATH="$AZULE/bin/linux:$PATH"
             fi
-            
             # GET TOOLCHAIN
-            
-            mkdir -p $HOME/Azule/toolchain
-            if [ ! "$(ls -A $HOME/Azule/toolchain)" ]; then
+            mkdir -p $AZULE/toolchain
+            if [ ! "$(ls -A $AZULE/toolchain)" ]; then
                 echo "Fetching toolchain..."
                 TMP=$(mktemp -d)
                 cd $TMP
                 curl -LO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
                 tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
-                rsync --remove-source-files -a $TMP/ios-arm64e-clang-toolchain/* $HOME/Azule/toolchain
-                cd $HOME/Azule
+                rsync --remove-source-files -a $TMP/ios-arm64e-clang-toolchain/* $AZULE/toolchain
+                cd $AZULE
                 rm -rf $TMP
             fi
         ;;
     esac
 
-    if [ ! -d "$HOME/Azule/CydiaSubstrate.framework" ]; then
+    if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
         cd $TMP
@@ -61,8 +58,8 @@ function setup-azule() {
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
         mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
-        mv CydiaSubstrate.framework $HOME/Azule/CydiaSubstrate.framework
-        cd $HOME/Azule
+        mv CydiaSubstrate.framework $AZULE/CydiaSubstrate.framework
+        cd $AZULE
         rm -rf $TMP
         plutil -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
         echo "Downloaded CydiaSubstrate.framework"
@@ -70,12 +67,12 @@ function setup-azule() {
 }
 
 function update-azule() {
-    cd $HOME/Azule
+    cd $AZULE
     while getopts ":fhr" args; do
         case "$args" in
             f)
                 git reset --hard HEAD >> /dev/null
-            ;;
+                ;;
 
             h)
                 echo "Usage: update-azule [options]"
@@ -90,9 +87,12 @@ function update-azule() {
                 exit 0
                 ;;
 
-            r) rm -rf CydiaSubstrate.framework toolchain ;;
+            r)
+                rm -rf CydiaSubstrate.framework toolchain
+                ;;
 
             *)
+
                 echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
                 exit 1
                 ;;
