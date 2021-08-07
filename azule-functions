@@ -9,7 +9,8 @@ if [ -d "$AZULE" ] ; then
 fi
 
 function setup-azule() {
-    cd $AZULE
+    currentdir="$PWD"
+    cd $AZULE || exit
     case $(uname) in
         Darwin)
             if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
@@ -18,8 +19,7 @@ function setup-azule() {
                     PATH="$AZULE/bin/darwin:$PATH"
                 fi
                 # CHECK IF XCODE CLI UTILS EXIST
-                xcode-select -p 1>/dev/null
-                if [ $? != 0 ]; then
+                if ! xcode-select -p 1>/dev/null; then
                     xcode-select --install
                 fi
             else
@@ -38,12 +38,12 @@ function setup-azule() {
             if [ ! "$(ls -A $AZULE/toolchain)" ]; then
                 echo "Fetching toolchain..."
                 TMP=$(mktemp -d)
-                cd $TMP
+                cd "$TMP" || exit
                 curl -LO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
                 tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
-                rsync --remove-source-files -a $TMP/ios-arm64e-clang-toolchain/* $AZULE/toolchain
-                cd $AZULE
-                rm -rf $TMP
+                rsync --remove-source-files -a "$TMP"/ios-arm64e-clang-toolchain/* $AZULE/toolchain
+                cd $AZULE || exit
+                rm -rf "$TMP"
             fi
         ;;
     esac
@@ -51,7 +51,7 @@ function setup-azule() {
     if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
-        cd $TMP
+        cd "$TMP" || exit
         curl -sSL "$(curl -sS https://api.parcility.co/db/package/mobilesubstrate/sbingner | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o substrate.deb
         ar -x "substrate.deb"
         tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
@@ -59,15 +59,18 @@ function setup-azule() {
         mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
         mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         mv CydiaSubstrate.framework $AZULE/CydiaSubstrate.framework
-        cd $AZULE
-        rm -rf $TMP
+        cd $AZULE || exit
+        rm -rf "$TMP"
         plutil -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
         echo "Downloaded CydiaSubstrate.framework"
     fi
+
+    cd "$currentdir" || exit
 }
 
 function update-azule() {
-    cd $AZULE
+    currentdir="$PWD"
+    cd $AZULE || exit
     while getopts ":fhr" args; do
         case "$args" in
             f)
@@ -99,5 +102,6 @@ function update-azule() {
         esac
     done
     git pull -q
+    cd "$currentdir" || exit
     setup-azule
 }
