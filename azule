@@ -159,7 +159,7 @@ cleanup () {
 }
 
 # CLI ARGUEMENTS
-while getopts :n:i:o:c:a:b:x:f:d:p:huSmewlv args; do
+while getopts :n:i:o:c:a:b:x:f:d:p:huSewlv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -243,7 +243,6 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSmewlv args; do
 
         u) u=1 && run=1 ;;
         v) v="-v" ;;
-        m) m=1 ;;
         a) a=1
             if [ "$os" != "iOS" ]; then
                 echo "-a is not supported on your platform"
@@ -348,7 +347,6 @@ if [[ -z "$run" && -z "$drun" ]]; then
     "Remove Watch App"
     "Run With Verbose Mode"
     "Set Custom Output Name"
-    "Manually Inject dylib files (Not Recommended)"
     "Use APT instead of Parcility"
     )
 
@@ -429,7 +427,6 @@ if [[ -z "$run" && -z "$drun" ]]; then
 
             "Do Not Update Outdated Apps") l=1 ;;
 
-            "Manually Inject dylib files (Not Recommended)") m=1 ;;
             "Run With Verbose Mode") v="-v" ;;
 
             "Remove Watch App")
@@ -510,7 +507,6 @@ cd "$dir/$tweakid" || exit
 
 # DECRYPTION
 if [ -n "$drun" ]; then
-
     # GET BINARY
     while read -r i; do
         if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
@@ -561,7 +557,7 @@ if [ -n "$drun" ]; then
     done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
 
     # PRE CLEANUP
-    find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &> /dev/null -exec rm -rf "{}" \;
+    find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
 
     # BFDECRYPT SETUP
     if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
@@ -611,14 +607,14 @@ fi
 # REMOVING PLUGINS
 if [ -n "$e" ]; then
     echo "Removing Extensions..."
-    find "$dir/$tweakid" -type d -mindepth 3 -maxdepth 3 -name PlugIns -exec rm -rf "{}" \;
+    find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name PlugIns -exec rm -rf "{}" \;
     Verbose "Removed Extensions" "Couldn't Remove Extensions"
 fi
 
 # REMOVING WATCH APP
 if [ -n "$w" ]; then
     echo "Removing Watch App..."
-    find "$dir/$tweakid" -type d -mindepth 3 -maxdepth 3 -name Watch -exec rm -rf "{}" \;
+    find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
     Verbose "Removed Watch App" "Couldn't Remove Watch App"
 fi
 
@@ -641,7 +637,7 @@ if [ -n "$run" ]; then
                 fi
             fi
         fi
-    done <   <(find Payload/*.app -name "Info.plist" -print0)
+    done < <(find Payload/*.app -name "Info.plist")
 fi
 
 # PROCESSING FILES
@@ -696,71 +692,49 @@ if [ -n "$files" ]; then
     done
 
     # SPECIFYING DYLIBS
-    if [ -n "$m" ]; then
-        if [ -n "$(ls -A "$dir/$tweakid/Tweak" 2>/dev/null)" ]; then
-            export COLUMNS=1
-            while read -r i; do
-                dylibs+=("$i");
-            done < <($(find "$dir/$tweakid/Tweak" -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*' -exec basename {} \;) 'Done')
-            echo $'Available Dylibs: '
-            PS3=$'Choose Dylibs (recommended): '
-            select i in "${dylibs[@]}"; do
-                if [ "$i" = "Done" ]; then break
-                else
-                    inject+=( "$i" )
-                fi
-            done
+    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
+
+    # AUTOMATIC DYLIB SELECTION
+    for i in "${dylibs[@]}"; do
+        if ! [ -f "${i%.*}.plist" ]; then
+            inject+=( "$(basename "$i")" )
         else
-            echo "No dylibs available"
-            pause
-        fi
-    else
-        while read -r i; do
-            dylibs+=("$i");
-        done < <(find "$dir/$tweakid/Tweak" -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
+            identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
+            idtype="$(ExtractPlistValue Filter "${i%.*}".plist key)"
 
-        # AUTOMATIC DYLIB SELECTION
-        for i in "${dylibs[@]}"; do
-            if ! [ -f "${i%.*}.plist" ]; then
-                inject+=( "$(basename "$i")" )
-            else
-                identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
-                idtype="$(ExtractPlistValue Filter "${i%.*}".plist key)"
-
-                case "$idtype" in
-                    Bundles)
-                        ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist)"
+            case "$idtype" in
+                Bundles)
+                    ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist)"
                     
-                        if [[ "$identifier" =~ $ipabundleid ]]; then
-                            inject+=( "$(basename "$i")" )
-                        fi
-                    ;;
+                    if [[ "$identifier" =~ $ipabundleid ]]; then
+                        inject+=( "$(basename "$i")" )
+                    fi
+                ;;
 
-                    Executables)
-                        if [[ "$identifier" =~ $(basename "$executable") ]]; then
-                            inject+=( "$(basename "$i")" )
-                        fi
-                    ;;
+                Executables)
+                    if [[ "$identifier" =~ $(basename "$executable") ]]; then
+                        inject+=( "$(basename "$i")" )
+                    fi
+                ;;
                 
-                esac
-            fi
-        done
-    fi
+            esac
+        fi
+    done
 
-    # INJECTING DYLIBS
+    # INJECTING DYLIBS ### MAYBE CAN BE IMPROVED
     for i in "${inject[@]}"; do
         find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec sh -c 'rsync -a $1 Payload/*.app/Frameworks' _ {} \;
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v
 
         insert_dylib --inplace --weak --all-yes "@rpath/$i" "$executable" &> /dev/null
-        Verbose "Injected $i" "Couldn't inject $i)"
+        Verbose "Injected $i" "Couldn't inject $i"
     done
 
     # MOVING BUNDLES
-    find "$dir/$tweakid/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*' | while read -r i; do
+    while read -r i; do
         rsync -a "$i" Payload/*.app/
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
-    done
+    done < <(find "$dir/$tweakid/Tweak" -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
@@ -771,13 +745,12 @@ if [ -n "$files" ]; then
     done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
+    echo "${inject[@]}"
     for i in "${inject[@]}"; do
         ldid -r Payload/*.app/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
 
-        while read -r i; do
-            links+=("$i");
-        done < <(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
+        while read -r p; do links+=("$p"); done < <(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
         for l in "${links[@]}"; do
             for x in "${inject[@]}"; do
                 if [[ "$l" =~ $x ]]; then
@@ -799,7 +772,7 @@ if [ -n "$files" ]; then
     if [[ "$tid" = 0 || -z "$tid" ]]; then
         echo "ID Successful"
     else
-        echo "$tid files failed to ID"
+        echo "$tid file(s) failed to ID"
     fi
 
     if [[ "$tlnk" = 0 || -z "$tlnk" ]]; then
@@ -809,7 +782,7 @@ if [ -n "$files" ]; then
     fi
 
     # INJECT HOOKING LIBRARY
-    hookinglibrary=CydiaSubstrate.framework
+    hookinglibrary="CydiaSubstrate.framework"
 
     if [ "$os" == "iOS" ]; then
         rsync -a "/var/mobile/Azule/$hookinglibrary" Payload/*.app/Frameworks
@@ -825,13 +798,11 @@ if [ -n "$files" ]; then
     fi
 
     for i in "${inject[@]}"; do
-        while read -r i; do
-            links+=("$i");
-        done < <(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
+        while read -r q; do links+=("$q"); done < <(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
         for l in "${links[@]}"; do
             if [[ "$l" =~ CydiaSubstrate.framework/CydiaSubstrate || "$l" =~ libsubstrate.dylib || "$l" =~ libsubstitute.dylib ]]; then
-                install_name_tool -change "$l" "@rpath/$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
-                status=$(( tlnk + $? ))
+                install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
+                status=$(( status + $? ))
                 break
             fi
         done
@@ -841,7 +812,7 @@ if [ -n "$files" ]; then
     if [[ "$status" = 0 || -z "$status" ]]; then
         echo "Injecting $hookinglibrary Successful"
     else
-        echo "Failed injecting $hookinglibrary in $status files"
+        echo "Failed injecting $hookinglibrary in $status file(s)"
     fi
 fi
 
