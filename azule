@@ -159,7 +159,7 @@ cleanup () {
 }
 
 # CLI ARGUEMENTS
-while getopts :n:i:o:c:a:b:x:f:d:p:huSewmglv args; do
+while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -212,7 +212,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmglv args; do
             run=1
         ;;
 
-        f)
+        f) 
             files=( "$(expand "$OPTARG")" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
                 files+=( "$(expand "$(eval "echo \${$OPTIND}")")" )
@@ -282,6 +282,14 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmglv args; do
             fi
             g=1
         ;;
+        
+        z)
+            if [ "$os" != "iOS" ]; then
+                echo "-z is not supported on your platform"
+                exit 1
+            fi
+            z=1
+        ;;
 
         h)
             echo "Usage: azule [options]"
@@ -309,6 +317,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmglv args; do
                 echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
                 echo "  -m                           Enforce Updating Apps Before Decrypting"
                 echo "  -l                           Don't Update Outdated Apps"
+                echo "  -z                           Don't Update APT Sources (Used With -a)"
             fi
             
             echo
@@ -383,6 +392,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
         "Force Update Apps"
         "Decrypt Apps through Flexdecrypt"
         "Use APT instead of Parcility"
+        "Don't Update APT Sources"
         )
     fi
 
@@ -459,6 +469,8 @@ if [[ -z "$run" && -z "$drun" ]]; then
 
             "Do Not Update Outdated Apps") l=1 ;;
             
+            "Don't Update APT Sources") z=1 ;;
+                    
             "Force Update Apps") m=1 ;;
             
             "Decrypt Apps through Flexdecrypt") g=1 ;;
@@ -589,11 +601,11 @@ if [ -n "$drun" ]; then
 
         # FLEXDECRYPT
 
-        while read i; do
+        while read -r i; do
             if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
                 echo "Preparing App..."
                 mkdir -p Payload
-                rsync -a $(dirname "$i")/*.app Payload
+                rsync -a "$(dirname "$i")"/*.app Payload
                 unzipped=1
                 break
             fi
@@ -748,13 +760,18 @@ if [ -n "$files" ]; then
             # FETCHING DEBS
             if [ "$os" == "iOS" ] && [ -n "$a" ]; then
                 if [ -z "$rcount" ]; then
-                    echo "Updating Sources..."
-                    echo "$pswd" | sudo -S apt update &>/dev/null
+                    if [ -z "$z" ]; then
+                        echo "Updating Sources..."
+                        echo "$pswd" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
+                        Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
+                    fi
                     while read -r g; do echo "$pswd" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
                 fi
                 rcount=1
                 echo "Fetching $i"
                 echo "$pswd" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
+                Verbose "Fetched $i" "Couldn't Fetch $i"
+                
                 while read -r g; do
                     ExtractDEB "$g"
                     echo "$pswd" | sudo -S rm -rf "$g"
