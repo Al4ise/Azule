@@ -133,17 +133,18 @@ Verbose () {
 expand () {
     cdir="$PWD"
     cd || exit
-    if [ "$1" == "." ]; then
-        echo "$rootdir"
+    tmp="$(echo "$1" | sed 's/\\ / /g')"
+    if [[ "$tmp" == .* ]]; then
+        echo "$tmp" | sed "s|\.|$rootdir|"
     else
-        if [[ -f "$1" || -d "$1" ]]; then
-            echo "$1"
+        if [[ -f "$tmp" || -d "$tmp" ]]; then
+            echo "$tmp"
         else
-            tmp="$(find "$rootdir" -maxdepth 1 -name "$1")"
-            if [ -z "$tmp" ]; then
-                echo "$1"
-            else
+            tmp2="$(find "$rootdir" -maxdepth 1 -name "$tmp")"
+            if [ -z "$tmp2" ]; then
                 echo "$tmp"
+            else
+                echo "$tmp2"
             fi
         fi
     fi
@@ -400,11 +401,11 @@ if [[ -z "$run" && -z "$drun" ]]; then
     select i in "${arguements[@]}"; do
         case "$i" in
             "Inject Tweaks")
-                if [ -z ${#files[@]} ]; then while
+                if [ -z "$files" ]; then while
                     printf 'Files or Tweak IDs: '
                     read -r tmp
                     files+=( "$(eval "echo $tmp")" )
-                    [ -z ${#files[@]} ] && echo "No Files Provided"
+                    [ -z "$files" ] && echo "No Files Provided"
                 do true; done; fi
                 run=1
             ;;
