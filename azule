@@ -822,7 +822,6 @@ if [ -n "$files" ]; then
     done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
-    echo "${inject[@]}"
     for i in "${inject[@]}"; do
         ldid -r Payload/*.app/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
