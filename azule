@@ -302,13 +302,15 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmglv args; do
             echo "  -e                           Removes App Extensions"
             echo "  -w                           Removes Watch App"
             echo "  -h                           Print this help menu"
-            echo
-            echo "iOS Only Arguements"
-            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
-            echo "  -a [Root Password]           Use APT instead of Parcility"
-            echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
-            echo "  -m                           Enforce Updating Apps Before Decrypting"
-            echo "  -l                           Don't Update Outdated Apps"
+            
+            if [ "$os" == "iOS" ]; then
+                echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
+                echo "  -a [Root Password]           Use APT instead of Parcility"
+                echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
+                echo "  -m                           Enforce Updating Apps Before Decrypting"
+                echo "  -l                           Don't Update Outdated Apps"
+            fi
+            
             echo
             echo "Examples:"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
