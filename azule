@@ -159,7 +159,7 @@ cleanup () {
 }
 
 # CLI ARGUEMENTS
-while getopts :n:i:o:c:a:b:x:f:d:p:huSewlv args; do
+while getopts :n:i:o:c:a:b:x:f:d:p:huSewmglv args; do
     case "$args" in
         n)
             name="$OPTARG"
@@ -228,7 +228,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewlv args; do
             fi
             appleid="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                password="($(eval "echo \${$OPTIND}"))"
+                password="$(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
         ;;
@@ -257,8 +257,31 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewlv args; do
 
         e) e=1 && run=1 ;;
         w) w=1 && run=1 ;;
-        l) l=1 ;;
         S) fakesign=1 && run=1 ;;
+        
+        l)
+            if [ "$os" != "iOS" ]; then
+                echo "-l is not supported on your platform"
+                exit 1
+            fi
+            l=1
+        ;;
+        
+        m)
+           if [ "$os" != "iOS" ]; then
+                echo "-m is not supported on your platform"
+                exit 1
+            fi
+            m=1
+        ;;
+        
+        g)
+            if [ "$os" != "iOS" ]; then
+                echo "-g is not supported on your platform"
+                exit 1
+            fi
+            g=1
+        ;;
 
         h)
             echo "Usage: azule [options]"
@@ -273,16 +296,19 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewlv args; do
             echo "  -c [Version]                 Set custom version for output ipa"
             echo "  -b [BundleId]                Set custom BundleID for output ipa"
             echo "  -p [Name]                    Set custom Display Name for output ipa"
-            echo "  -a [Root Password]           Use APT instead of Parcility [iOS Only]"
             echo "  -u                           Remove UISupportedDevices from app"
             echo "  -v                           Enable Verbose Mode"
-            echo "  -m                           Enables the manual dylib selection 'UI' (Not Recommended)"
             echo "  -S                           Fakesigns iPA for use with AppSync"
             echo "  -e                           Removes App Extensions"
             echo "  -w                           Removes Watch App"
-            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA [iOS Only]"
-            echo "  -l                           Don't Update Outdated Apps"
             echo "  -h                           Print this help menu"
+            echo
+            echo "iOS Only Arguements"
+            echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
+            echo "  -a [Root Password]           Use APT instead of Parcility"
+            echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
+            echo "  -m                           Enforce Updating Apps Before Decrypting"
+            echo "  -l                           Don't Update Outdated Apps"
             echo
             echo "Examples:"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
@@ -347,11 +373,15 @@ if [[ -z "$run" && -z "$drun" ]]; then
     "Remove Watch App"
     "Run With Verbose Mode"
     "Set Custom Output Name"
-    "Use APT instead of Parcility"
     )
 
     if [ "$os" == "iOS" ]; then
-        arguements+=( "Do Not Update Outdated Apps" )
+        arguements+=(
+        "Do Not Update Outdated Apps"
+        "Force Update Apps"
+        "Decrypt Apps through Flexdecrypt"
+        "Use APT instead of Parcility"
+        )
     fi
 
     arguements+=( "Done" )
@@ -426,6 +456,10 @@ if [[ -z "$run" && -z "$drun" ]]; then
             ;;
 
             "Do Not Update Outdated Apps") l=1 ;;
+            
+            "Force Update Apps") m=1 ;;
+            
+            "Decrypt Apps through Flexdecrypt") g=1 ;;
 
             "Run With Verbose Mode") v="-v" ;;
 
@@ -521,7 +555,7 @@ if [ -n "$drun" ]; then
     if [ -n "$currentv" ]; then l+=1; fi
 
     # INSTALL UPDATES
-    if [[ "$latestv" != "$currentv" && "$l" != "11" ]]; then
+    if [[ "$latestv" != "$currentv" && "$l" != "11" ]] || [ -n "$m" ]; then
 
         # VARIABLE CHECK
         if [ -z "$appleid" ]; then while
@@ -536,7 +570,8 @@ if [ -n "$drun" ]; then
             [ -z "$password" ] && echo "No Password Provided"
         do true; done; fi
 
-        ipatool-azule download -b "$ipadir" -e "$appleid" -p "$password"
+        if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$password"; then exit 1; fi
+        
         appinst "$dir/$tweakid"/*.ipa
 
         while read -r i; do
@@ -548,46 +583,85 @@ if [ -n "$drun" ]; then
         done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
     fi
 
-    # GET IPA DIRECTORY
-    while read -r i; do
-        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-            bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
-            break
+    if [ -n "$g" ]; then
+
+        # FLEXDECRYPT
+
+        while read i; do
+            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                echo "Preparing App..."
+                mkdir -p Payload
+                rsync -a $(dirname "$i")/*.app Payload
+                unzipped=1
+                break
+            fi
+        done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+    
+        if [ -z "$unzipped" ]; then
+            echo "Couldn't find app"
+            exit 1
         fi
-    done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
+    
+        while read -r i; do
+            CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
+            if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+                if [ -z "$ran" ]; then
+                    echo "Decrypting App..."
+                fi
+                flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "$(dirname "$i")/$CFBundleExecutable" &>/dev/null
+                ran=1
+            fi
+        done < <(find Payload/*.app -name "Info.plist")
+    
+        if [ -n "$ran" ]; then
+            echo "Decrypted App"
+        else
+            echo "App Was Not Encrypted"
+        fi
+    else
+    
+        # BFDECRYPT
+        
+        while read -r i; do
+            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
+                break
+            fi
+        done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
 
-    # PRE CLEANUP
-    find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
+        # PRE CLEANUP
+        find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
 
-    # BFDECRYPT SETUP
-    if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
-        cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
-        plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
-    fi
+        # BFDECRYPT SETUP
+        if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
+            cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
+            plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+        fi
 
-    # KILL APP
-    PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
-    if [ -n "$PID" ]; then
-        kill -9 "$PID"
-    fi
+        # KILL APP
+        PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
+        if [ -n "$PID" ]; then
+            kill -9 "$PID"
+        fi
 
-    # LAUNCH APP
-    open "$ipadir"
+        # LAUNCH APP
+        open "$ipadir"
 
-    # WAIT FOR IPA
-    until [ -f "$bfipadir" ]; do :; done
-    while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
+        # WAIT FOR IPA
+        until [ -f "$bfipadir" ]; do :; done
+        while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
 
-    # KILL APP
-    PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
-    kill -9 "$PID" &>/dev/null
+        # KILL APP
+        PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
+        kill -9 "$PID" &>/dev/null
 
-    # SET NEW IPADIR
-    ipadir="$bfipadir"
+        # SET NEW IPADIR
+        ipadir="$bfipadir"
 
-    # CLEANUP
-    if [ -f "$dir/$tweakid/bfbackup.plist" ]; then
-        mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
+        # CLEANUP
+        if [ -f "$dir/$tweakid/bfbackup.plist" ]; then
+            mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
+        fi
     fi
 fi
 
@@ -597,10 +671,13 @@ if [ -n "$v" ]; then
 fi
 
 # EXTRACTING IPA
-if [ -n "$run" ]; then
+if [[ -n "$run" && -z "$unzipped" ]]; then
     echo "Extracting iPA..."
     eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
     Verbose "IPA extracted" "Couldn't extract IPA"
+fi
+
+if [ -z "$bfipadir" ]; then
     rm -rf "$bfipadir"
 fi
 
