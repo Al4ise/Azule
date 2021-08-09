@@ -8,8 +8,47 @@ if [ -d "$AZULE" ] ; then
     PATH="$AZULE:$PATH"
 fi
 
-function setup-azule() {
+function update-azule() {
     currentdir="$PWD"
+    cd $AZULE || exit
+    while getopts ":fhr" args; do
+        case "$args" in
+            f)
+                git reset --hard HEAD >> /dev/null
+                ;;
+
+            h)
+                echo "Usage: update-azule [options]"
+                echo
+                echo "Running the command without any arguments will update Azule normally. If"
+                echo "you have made changes to any of Azule's files, the update will be cancelled."
+                echo
+                echo "Options:"
+                echo "  -f     Forcefully update Azule, causing all local changes to be lost."
+                echo "  -r     Redownload the latest mobilesubstrate and linux toolchains."
+                echo "  -h     Print this help menu."
+                exit 0
+                ;;
+
+            r)
+                rm -rf CydiaSubstrate.framework toolchain
+                ;;
+
+            *)
+
+                echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
+                exit 1
+                ;;
+        esac
+    done
+    git pull -q
+    setup-azule
+}
+
+function setup-azule() {
+    if [ -z ${currentdir+x} ]; then
+        currentdir="$PWD"
+    fi
     cd $AZULE || exit
     case $(uname) in
         Darwin)
@@ -66,42 +105,4 @@ function setup-azule() {
     fi
 
     cd "$currentdir" || exit
-}
-
-function update-azule() {
-    currentdir="$PWD"
-    cd $AZULE || exit
-    while getopts ":fhr" args; do
-        case "$args" in
-            f)
-                git reset --hard HEAD >> /dev/null
-                ;;
-
-            h)
-                echo "Usage: update-azule [options]"
-                echo
-                echo "Running the command without any arguments will update Azule normally. If"
-                echo "you have made changes to any of Azule's files, the update will be cancelled."
-                echo
-                echo "Options:"
-                echo "  -f     Forcefully update Azule, causing all local changes to be lost."
-                echo "  -r     Redownload the latest mobilesubstrate and linux toolchains."
-                echo "  -h     Print this help menu."
-                exit 0
-                ;;
-
-            r)
-                rm -rf CydiaSubstrate.framework toolchain
-                ;;
-
-            *)
-
-                echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
-                exit 1
-                ;;
-        esac
-    done
-    git pull -q
-    cd "$currentdir" || exit
-    setup-azule
 }
