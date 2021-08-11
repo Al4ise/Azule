@@ -310,7 +310,6 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
             echo "  -S                           Fakesigns iPA for use with AppSync"
             echo "  -e                           Removes App Extensions"
             echo "  -w                           Removes Watch App"
-            echo "  -h                           Print this help menu"
             
             if [ "$os" == "iOS" ]; then
                 echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
@@ -326,6 +325,8 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
             echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
+            echo
+            echo "  -h                           Print this help menu"
             exit 1
             ;;
         *)
@@ -742,13 +743,11 @@ if [ -n "$files" ]; then
                 *.dylib)
                     rsync -a "$i" "$dir/$tweakid/Custom"
                     Verbose "Copied $(basename "$i") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
-
-                    inject+=( "$(basename "$i")" )
                 ;;
 
                 *.framework)
-                    rsync -a "$i" Payload/*.app/Frameworks
-                    Verbose "Moved $(basename "$i") to app directory" "Couldn't Move $(basename "$i") to app directory"
+                    rsync -a "$i" "$dir/$tweakid/Custom"
+                    Verbose "Moved $(basename "$i") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
                 ;;
 
                 *)
@@ -789,7 +788,7 @@ if [ -n "$files" ]; then
     done
 
     # SPECIFYING DYLIBS
-    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
+    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # AUTOMATIC DYLIB SELECTION
     for i in "${dylibs[@]}"; do
@@ -823,7 +822,7 @@ if [ -n "$files" ]; then
         find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec sh -c 'rsync -a $1 Payload/*.app/Frameworks' _ {} \;
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v
 
-        insert_dylib --inplace --weak --all-yes "@rpath/$i" "$executable" &> /dev/null
+        insert_dylib --inplace --weak --all-yes @rpath/"$i" "$executable" &> /dev/null
         Verbose "Injected $i" "Couldn't inject $i"
     done
 
