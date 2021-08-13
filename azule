@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# GET CURRENT DIRECTORY
-rootdir="$PWD"
+# SAVE DIRECTORY WHERE AZULE WAS RAN
+topdir="$PWD"
 
 # SET PLATFORM
 case "$(uname -s)" in
@@ -98,7 +98,7 @@ case "$os" in
         }
 
         ExtractDEB () {
-            currentdir="$PWD"
+            origin_dir=$(pwd)
             TMP=$(mktemp -d)
             cd "$TMP" || exit
             if [ "$2" = "fetch" ]; then
@@ -112,7 +112,7 @@ case "$os" in
             echo "Extracting $(basename "$i")..."
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
-            cd "$currentdir" || exit
+            cd "$origin_dir" || exit
             rm -rf "$TMP"
         }
     ;;
@@ -131,16 +131,16 @@ Verbose () {
 }
 
 expand () {
-    cdir="$PWD"
+    origin_dir=$(pwd)
     cd || exit
     tmp="$(echo "$1" | sed 's/\\ / /g')"
     if [[ "$tmp" == .* ]]; then
-        echo "$tmp" | sed "s|\.|$rootdir|"
+        echo "$tmp" | sed "s|\.|$topdir|"
     else
         if [[ -f "$tmp" || -d "$tmp" ]]; then
             echo "$tmp"
         else
-            tmp2="$(find "$rootdir" -maxdepth 1 -name "$tmp")"
+            tmp2="$(find "$topdir" -maxdepth 1 -name "$tmp")"
             if [ -z "$tmp2" ]; then
                 echo "$tmp"
             else
@@ -148,7 +148,7 @@ expand () {
             fi
         fi
     fi
-    cd "$cdir" || exit
+    cd "$origin_dir" || exit
 }
 
 cleanup () {
@@ -213,7 +213,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
             run=1
         ;;
 
-        f) 
+        f)
             tmpa=( "$(expand "$OPTARG")" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
                 tmpa+=( "$(expand "$(eval "echo \${$OPTIND}")")" )
