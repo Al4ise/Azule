@@ -132,22 +132,17 @@ Verbose () {
 
 expand () {
     origin_dir=$(pwd)
-    cd || exit
-    tmp="$(echo "$1" | sed 's/\\ / /g')"
-    if [[ "$tmp" == .* ]]; then
-        echo "$tmp" | sed "s|\.|$topdir|"
+    cd || exit 
+    tmp=${1//\\ / }
+
+    # Find input path in $topdir
+    find_tmp="$(find "$topdir" -maxdepth 1 -name "$(basename "$tmp")")"
+    if [[ -n $find_tmp ]]; then
+        echo "$find_tmp"
     else
-        if [[ -f "$tmp" || -d "$tmp" ]]; then
-            echo "$tmp"
-        else
-            tmp2="$(find "$topdir" -maxdepth 1 -name "$tmp")"
-            if [ -z "$tmp2" ]; then
-                echo "$tmp"
-            else
-                echo "$tmp2"
-            fi
-        fi
+        echo "$tmp"
     fi
+
     cd "$origin_dir" || exit
 }
 
