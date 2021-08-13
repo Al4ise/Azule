@@ -714,7 +714,11 @@ fi
 
 # VERBOSE
 if [ -n "$v" ]; then
-    echo "Path to IPA is $ipadir"
+    if [ -f "$ipadir" ]; then
+        echo "Path to IPA is $ipadir"
+    else
+        echo "Decrypted $ipadir"
+    fi
 fi
 
 # EXTRACTING IPA
@@ -753,7 +757,11 @@ if [ -n "$run" ]; then
         CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
         if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
             if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/PlugIns ]]; then
-                echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
+                if [ "$os" == "iOS" ]; then
+                    echo "App Couldn't be Decrypted. Try running Azule with the "-m" arguement."
+                else
+                    echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
+                fi
                 exit 1
             else
                 if [ -n "$v" ]; then
