@@ -136,7 +136,7 @@ expand () {
     tmp=${1//\\ / }
 
     # Find input path in $topdir
-    find_tmp="$(find "$topdir" -maxdepth 1 -name "$(basename "$tmp")")"
+    find_tmp=$(find "$topdir" -maxdepth 1 -name "$(basename "$tmp")")
     if [[ -n $find_tmp ]]; then
         echo "$find_tmp"
     else
@@ -618,8 +618,8 @@ if [ -n "$drun" ]; then
 
         while read -r i; do
             if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
-                bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
+                bfplist=$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)
+                bfbinary=$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")
                 break
             fi
         done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
@@ -645,7 +645,7 @@ if [ -n "$drun" ]; then
         fi
     
         while read -r i; do
-            CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
+            CFBundleExecutable=$(ExtractPlistValue CFBundleExecutable "$i")
             if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
                 if [ -z "$ran" ]; then
                     echo "Decrypting App..."
@@ -749,7 +749,7 @@ if [ -n "$run" ]; then
 
     # ENCRYPTION CHECK
     while read -r i; do
-        CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
+        CFBundleExecutable=$(ExtractPlistValue CFBundleExecutable "$i")
         if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
             if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/PlugIns ]]; then
                 if [ "$os" == "iOS" ]; then
@@ -829,12 +829,12 @@ if [ -n "$files" ]; then
         if ! [ -f "${i%.*}.plist" ]; then
             inject+=( "$(basename "$i")" )
         else
-            identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
-            idtype="$(ExtractPlistValue Filter "${i%.*}".plist key)"
+            identifier=$(ExtractPlistValue Filter "${i%.*}".plist)
+            idtype=$(ExtractPlistValue Filter "${i%.*}".plist key)
 
             case "$idtype" in
                 Bundles)
-                    ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist)"
+                    ipabundleid=$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist)
                     
                     if [[ "$identifier" =~ $ipabundleid ]]; then
                         inject+=( "$(basename "$i")" )
@@ -949,7 +949,7 @@ fi
 # REMOVING UISUPPORTEDDEVICES
 
 if [ -n "$u" ]; then
-    UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist)"
+    UISupportedDevices=$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist)
     if [ -n "$UISupportedDevices" ]; then
         RemovePlistKey UISupportedDevices Payload/*.app/Info.plist
         Verbose "Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app"
