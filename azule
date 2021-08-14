@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# GET CURRENT DIRECTORY
+# SET INITIAL DIRECTORIES
 rootdir="$PWD"
+empty_dir="$(mktemp -d)"
+cd "$empty_dir"
 
 # SET PLATFORM
 case "$(uname -s)" in
@@ -98,7 +100,7 @@ case "$os" in
         }
 
         ExtractDEB () {
-            currentdir="$PWD"
+            origin_dir="$PWD"
             TMP=$(mktemp -d)
             cd "$TMP" || exit
             if [ "$2" = "fetch" ]; then
@@ -112,7 +114,7 @@ case "$os" in
             echo "Extracting $(basename "$i")..."
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
-            cd "$currentdir" || exit
+            cd "$origin_dir" || exit
             rm -rf "$TMP"
         }
     ;;
@@ -131,24 +133,23 @@ Verbose () {
 }
 
 expand () {
-    cdir="$PWD"
-    cd || exit
-    tmp="$(echo "$1" | sed 's/\\ / /g')"
-    if [[ "$tmp" == .* ]]; then
-        echo "$tmp" | sed "s|\.|$rootdir|"
-    else
-        if [[ -f "$tmp" || -d "$tmp" ]]; then
-            echo "$tmp"
-        else
-            tmp2="$(find "$rootdir" -maxdepth 1 -name "$tmp")"
-            if [ -z "$tmp2" ]; then
-                echo "$tmp"
-            else
-                echo "$tmp2"
-            fi
+    origin_dir="$PWD"
+    cd "$empty_dir" || exit
+    process_var="${1//\\ / }"
+
+    if [[ "$process_var" == .* ]]; then
+        process_var="$(echo "$process_var" | sed "s|\.|$rootdir|")"
+    fi
+
+    if ! [[ -f "$process_var" || -d "$process_var" ]]; then
+        if [[ -f "$rootdir/$process_var" || -d "$rootdir/$process_var" ]]; then
+            process_var="$rootdir/$process_var"
         fi
     fi
-    cd "$cdir" || exit
+        
+    cd "$origin_dir" || exit
+    
+    echo "$process_var"
 }
 
 cleanup () {
@@ -156,6 +157,7 @@ cleanup () {
         mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
     fi
     rm -rf "$dir"
+    rm -rf "$empty_dir"
     exit
 }
 
@@ -214,18 +216,19 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         f) 
-            tmpa=( "$(expand "$OPTARG")" )
+            tmpa=( "$OPTARG" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                tmpa+=( "$(expand "$(eval "echo \${$OPTIND}")")" )
+                tmpa+=( "$(eval "echo \${$OPTIND}")" )
                 OPTIND=$((OPTIND + 1))
             done
+            
             for i in "${tmpa[@]}"; do
                 if [ -n "$tmp2" ]; then
                     tmp2+=" "
                 fi
                 tmp2+="$i"
                 if [ -f "$(expand "$tmp2")" ] || [ -d "$(expand "$tmp2")" ]; then
-                    files+=( "$tmp2" )
+                    files+=( "$(expand "$tmp2")" )
                     unset tmp2
                 fi
             done
@@ -245,20 +248,10 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         d)
-            tmpa=( "$(expand "$OPTARG")" )
+            inject=( "$OPTARG" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                tmpa+=( "$(expand "$(eval "echo \${$OPTIND}")")" )
+                inject+=( "$(eval "echo \${$OPTIND}")" )
                 OPTIND=$((OPTIND + 1))
-            done
-            for i in "${tmpa[@]}"; do
-                if [ -n "$tmp2" ]; then
-                    tmp2+=" "
-                fi
-                tmp2+="$i"
-                if [ -f "$(expand "$tmp2")" ] || [ -d "$(expand "$tmp2")" ]; then
-                    inject+=( "$tmp2" )
-                    unset tmp2
-                fi
             done
         ;;
 
