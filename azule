@@ -141,8 +141,8 @@ expand () {
         process_var="$(echo "$process_var" | sed "s|\.|$rootdir|")"
     fi
 
-    if ! [[ -f "$process_var" || -d "$process_var" ]]; then
-        if [[ -f "$rootdir/$process_var" || -d "$rootdir/$process_var" ]]; then
+    if ! [ -e "$process_var" ]; then
+        if [ -e "$rootdir/$process_var" ]; then
             process_var="$rootdir/$process_var"
         fi
     fi
@@ -153,7 +153,7 @@ expand () {
 }
 
 cleanup () {
-    if [[ "$os" == "iOS" && -f "$dir/$tweakid/bfbackup.plist" ]]; then
+    if [[ "$os" == "iOS" && -e "$dir/$tweakid/bfbackup.plist" ]]; then
         mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
     fi
     rm -rf "$dir"
@@ -216,21 +216,10 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         f) 
-            tmpa=( "$OPTARG" )
+            temp_files=( "$OPTARG" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                tmpa+=( "$(eval "echo \${$OPTIND}")" )
+                temp_files+=( "$(eval "echo \${$OPTIND}")" )
                 OPTIND=$((OPTIND + 1))
-            done
-            
-            for i in "${tmpa[@]}"; do
-                if [ -n "$tmp2" ]; then
-                    tmp2+=" "
-                fi
-                tmp2+="$i"
-                if [ -f "$(expand "$tmp2")" ] || [ -d "$(expand "$tmp2")" ]; then
-                    files+=( "$(expand "$tmp2")" )
-                    unset tmp2
-                fi
             done
             run=1
         ;;
@@ -243,14 +232,6 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
             appleid="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
                 password="$(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-        ;;
-
-        d)
-            inject=( "$OPTARG" )
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                inject+=( "$(eval "echo \${$OPTIND}")" )
                 OPTIND=$((OPTIND + 1))
             done
         ;;
@@ -314,7 +295,6 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
             echo "Optional Arguements"
             echo "  -n [Name]                    Specify an Output Name"
             echo "  -f [Paths/Bundle IDs]        Specify the files or tweak Bundle IDs to import"
-            echo "  -d [Names]                   Specify the names of the dylibs to inject (Not Recommended)"
             echo "  -c [Version]                 Set custom version for output ipa"
             echo "  -b [BundleId]                Set custom BundleID for output ipa"
             echo "  -p [Name]                    Set custom Display Name for output ipa"
@@ -369,7 +349,7 @@ do true; done; fi
 
 ipadir="$(expand "$ipadir")"
 
-if [ ! -f "$ipadir" ]; then
+if [ ! -e "$ipadir" ]; then
     if [ "$os" != "iOS" ]; then
         echo "Invalid iPA"
         exit 1
@@ -418,19 +398,8 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 if [ -z "$files" ]; then while
                     printf 'Files or Tweak IDs: '
                     read -r tmp
-                    tmpa=( $(eval "echo $tmp") )
-
-                    for i in "${tmpa[@]}"; do
-                        if [ -n "$tmp2" ]; then
-                            tmp2+=" "
-                        fi
-                        tmp2+="$i"
-                        if [ -f "$(expand "$tmp2")" ] || [ -d "$(expand "$tmp2")" ]; then
-                            files+=( "$tmp2" )
-                            unset tmp2
-                        fi
-                    done
-                    [ -z "$files" ] && echo "No Files Provided"
+                    temp_files=( $(eval "echo $tmp") )
+                    [ -z "$temp_files" ] && echo "No Files Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -528,13 +497,6 @@ fi
 # SET ROOT PASSWORD
 if [ -z "$pswd" ] && [ -n "$a" ]; then
     pswd="alpine"
-fi
-
-# VERBOSE
-if [[ -n "$v" && -n "$files" ]]; then
-    for i in "${files[@]}"; do
-        echo "$i will be imported"
-    done
 fi
 
 # SETTING OUTPUT DIRECTORY AND NAME
@@ -688,7 +650,7 @@ if [ -n "$drun" ]; then
         open "$ipadir"
 
         # WAIT FOR IPA
-        until [ -f "$bfipadir" ]; do :; done
+        until [ -e "$bfipadir" ]; do :; done
         while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
 
         # KILL APP
@@ -699,7 +661,7 @@ if [ -n "$drun" ]; then
         ipadir="$bfipadir"
 
         # CLEANUP
-        if [ -f "$dir/$tweakid/bfbackup.plist" ]; then
+        if [ -e "$dir/$tweakid/bfbackup.plist" ]; then
             mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
         fi
     fi
@@ -707,7 +669,7 @@ fi
 
 # VERBOSE
 if [ -n "$v" ]; then
-    if [ -f "$ipadir" ]; then
+    if [ -e "$ipadir" ]; then
         echo "Path to IPA is $ipadir"
     else
         echo "Decrypted $ipadir"
@@ -717,7 +679,7 @@ fi
 # EXTRACTING IPA
 if [[ -n "$run" && -z "$unzipped" ]]; then
     echo "Extracting iPA..."
-    eval "unzip -q '$ipadir' -d $dir/'$tweakid'"
+    unzip -q "$ipadir" -d "$dir/$tweakid"
     Verbose "IPA extracted" "Couldn't extract IPA"
 fi
 
@@ -765,10 +727,36 @@ if [ -n "$run" ]; then
     done < <(find Payload/*.app -name "Info.plist")
 fi
 
+# INITIALIZING ${FILES}
+
+x=0
+while [[ "$x" -lt "${#temp_files[@]}" ]]; do
+    temp_string+="$(expand "${temp_files[x]}")"
+    x=$((x + 1))
+    until [[ -e "$(expand "$temp_string")" || -z "${temp_files[x]}" ]]; do
+        temp_string="$temp_string ${temp_files[x]}"
+        x=$((x + 1))
+    done
+
+    while [ -e "$(expand "$temp_string ${temp_files[x]}")" ]; do
+        temp_string+=" ${temp_files[x]}"
+        x=$((x + 1))
+    done
+    files+=( "$(expand "$temp_string")" )
+    unset temp_string
+done
+  
+# VERBOSE
+if [[ -n "$v" && -n "$files" ]]; then
+    for i in "${files[@]}"; do
+        echo "$i will be imported"
+    done
+fi
+
 # PROCESSING FILES
 if [ -n "$files" ]; then
     for i in "${files[@]}"; do
-        if [[ -f "$i" || -d "$i" ]]; then
+        if [ -e "$i" ]; then
             case "$i" in
                 *.deb) ExtractDEB "$i" ;;
 
@@ -822,9 +810,9 @@ if [ -n "$files" ]; then
     # SPECIFYING DYLIBS
     while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
 
-    # AUTOMATIC DYLIB SELECTION
+    # DYLIB SELECTION
     for i in "${dylibs[@]}"; do
-        if ! [ -f "${i%.*}.plist" ]; then
+        if ! [ -e "${i%.*}.plist" ]; then
             inject+=( "$(basename "$i")" )
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
@@ -866,7 +854,7 @@ if [ -n "$files" ]; then
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
-        if [ -f "$i/Info.plist" ]; then
+        if [ -e "$i/Info.plist" ]; then
             rsync -a "$i" Payload/*.app/Frameworks
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
