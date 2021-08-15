@@ -135,8 +135,8 @@ Verbose () {
 expand () {
     origin_dir="$PWD"
     cd "$empty_dir" || exit
-    process_var="${1//\\ / }"
-
+    process_var="$(echo ${1//\\ / } | xargs)"
+    
     if [[ "$process_var" == .* ]]; then
         process_var="$(echo "$process_var" | sed "s|\.|$rootdir|")"
     fi
@@ -287,7 +287,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         h)
-            echo "Azule 0.1.7"
+            echo "Azule 0.1.7-1"
             echo "Mandatory Arguements:"
             echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
@@ -733,9 +733,9 @@ for i in "${!temp_files[@]}"; do
     unset indexes[@]
     while [[ "$x" -lt "${#temp_files[@]}" ]]; do
         indexes+=( "$x" )
-        string+=${temp_files[x]}
-        if [ -e "$string" ]; then
-            files+=( "$string" )
+        string+=" ${temp_files[x]}"
+        if [ -e "$(expand "$string")" ] && ! [ -e "$(expand "$string ${temp_files[x+1]}")" ]; then
+            files+=( "$(expand "$string")" )
             for g in ${indexes[@]}; do
                 unset temp_files[g]
             done
