@@ -287,12 +287,12 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         h)
-            echo "Usage: azule [options]"
-            echo "Mandatory Arguements"
+            echo "Azule 0.1.7"
+            echo "Mandatory Arguements:"
             echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
             echo
-            echo "Optional Arguements"
+            echo "Optional Arguements:"
             echo "  -n [Name]                    Specify an Output Name"
             echo "  -f [Paths/Bundle IDs]        Specify the files or tweak Bundle IDs to import"
             echo "  -c [Version]                 Set custom version for output ipa"
@@ -728,23 +728,24 @@ if [ -n "$run" ]; then
 fi
 
 # INITIALIZING ${FILES}
-
-x=0
-while [[ "$x" -lt "${#temp_files[@]}" ]]; do
-    temp_string+="$(expand "${temp_files[x]}")"
-    x=$((x + 1))
-    until [[ -e "$(expand "$temp_string")" || -z "${temp_files[x]}" ]]; do
-        temp_string="$temp_string ${temp_files[x]}"
+for i in "${!temp_files[@]}"; do
+    x="$i"
+    unset indexes[@]
+    while [[ "$x" -lt "${#temp_files[@]}" ]]; do
+        indexes+=( "$x" )
+        string+=${temp_files[x]}
+        if [ -e "$string" ]; then
+            files+=( "$string" )
+            for g in ${indexes[@]}; do
+                unset temp_files[g]
+            done
+            unset indexes[@]
+        fi
         x=$((x + 1))
     done
-
-    while [ -e "$(expand "$temp_string ${temp_files[x]}")" ]; do
-        temp_string+=" ${temp_files[x]}"
-        x=$((x + 1))
-    done
-    files+=( "$(expand "$temp_string")" )
-    unset temp_string
+    unset string
 done
+files+=( ${temp_files[@]} )
   
 # VERBOSE
 if [[ -n "$v" && -n "$files" ]]; then
