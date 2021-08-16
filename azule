@@ -120,7 +120,7 @@ case "$os" in
     ;;
 esac
 
-# UNNECESSARY FUNCTIONS
+# FUNCTIONS
 Verbose () {
     tv="$?"
     if [ "$3" != "-v" ] || [[ "$3" = "-v" && -n "$v" ]]; then
@@ -161,6 +161,9 @@ cleanup () {
     exit
 }
 
+# CLEAN ON EXIT
+trap "cleanup" SIGINT
+
 # CLI ARGUEMENTS
 while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
     case "$args" in
@@ -196,6 +199,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
                 ipadir+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
+            ipadir="$(expand "$ipadir")"
         ;;
 
         o)
@@ -287,7 +291,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         h)
-            echo "Azule 0.1.7-1"
+            echo "Azule 0.1.8"
             echo "Mandatory Arguements:"
             echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
@@ -337,17 +341,13 @@ if [ -z "$outdir" ]; then while
     [ -z "$outdir" ] && echo "No Output Directory Specified"
 do true; done; fi
 
-outdir="$(expand "$outdir")"
-
 # READING IPA
 if [ -z "$ipadir" ]; then while
     printf 'Path to IPA: '
     read -r tmp
-    ipadir="$(eval "echo \$tmp")"
+    ipadir="$(expand "$(eval "echo \$tmp")")"
     [ -z "$ipadir" ] && echo "No iPA Specified"
 do true; done; fi
-
-ipadir="$(expand "$ipadir")"
 
 if [ ! -e "$ipadir" ]; then
     if [ "$os" != "iOS" ]; then
@@ -494,12 +494,8 @@ if ! [[ -n "$run" || -n "$drun" ]]; then
     exit 1
 fi
 
-# SET ROOT PASSWORD
-if [ -z "$pswd" ] && [ -n "$a" ]; then
-    pswd="alpine"
-fi
-
 # SETTING OUTPUT DIRECTORY AND NAME
+outdir="$(expand "$outdir")"
 if [ ! -d "$outdir" ]; then
     if [ "${outdir: -4}" == ".ipa" ]; then
         output="$outdir"
@@ -529,21 +525,17 @@ Verbose "iPA will be written to $(eval echo "$output")" "$(eval echo "$output") 
 # CREATING .TMP DIRECTORIES
 dir="$(mktemp -d)"
 
-# CLEAN ON EXIT
-trap "cleanup" SIGINT
-trap "cleanup" EXIT
-
 tweakid="$RANDOM"
 mkdir -p "$dir/$tweakid/Tweak"
 Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tweak" -v
 
-mkdir -p "$dir/$tweakid/Custom"
-Verbose "$dir/$tweakid/Custom has been created" "Couldn't create $dir/$tweakid/Custom" -v
 cd "$dir/$tweakid" || exit
 
 # DECRYPTION
 if [ -n "$drun" ]; then
+
     # GET BINARY
+    
     while read -r i; do
         if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
             bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
@@ -669,10 +661,10 @@ fi
 
 # VERBOSE
 if [ -n "$v" ]; then
-    if [ -e "$ipadir" ]; then
-        echo "Path to IPA is $ipadir"
+    if [[ -n "$unzipped" || -n "$bfipadir" ]]; then
+        echo "Decrypted "$ipadir""
     else
-        echo "Decrypted $ipadir"
+        echo "Path to iPA is "$ipadir""
     fi
 fi
 
@@ -727,89 +719,96 @@ if [ -n "$run" ]; then
     done < <(find Payload/*.app -name "Info.plist")
 fi
 
-# INITIALIZING ${FILES}
-for i in "${!temp_files[@]}"; do
-    x="$i"
-    unset indexes[@]
-    while [[ "$x" -lt "${#temp_files[@]}" ]]; do
-        indexes+=( "$x" )
-        string+=" ${temp_files[x]}"
-        if [ -e "$(expand "$string")" ] && ! [ -e "$(expand "$string ${temp_files[x+1]}")" ]; then
-            files+=( "$(expand "$string")" )
-            for g in ${indexes[@]}; do
-                unset temp_files[g]
-            done
-            unset indexes[@]
-        fi
-        x=$((x + 1))
-    done
-    unset string
-done
-files+=( ${temp_files[@]} )
-  
-# VERBOSE
-if [[ -n "$v" && -n "$files" ]]; then
-    for i in "${files[@]}"; do
-        echo "$i will be imported"
-    done
-fi
-
 # PROCESSING FILES
-if [ -n "$files" ]; then
+if [ -n "$temp_files" ]; then
+
+    # INITIALIZING ${FILES}
+    for i in "${!temp_files[@]}"; do
+        x="$i"
+        unset indexes[@]
+        while [[ "$x" -lt "${#temp_files[@]}" ]]; do
+            indexes+=( "$x" )
+            string+=" ${temp_files[x]}"
+            if [ -e "$(expand "$string")" ] && [[ -z "${temp_files[x+1]}" || ! -e "$(expand "$string ${temp_files[x+1]}")" ]]; then
+                files+=( "$(expand "$string")" )
+                for g in ${indexes[@]}; do
+                    unset temp_files[g]
+                done
+                unset indexes[@]
+            fi
+            x=$((x + 1))
+        done
+        unset string
+    done
+  
+    # VERBOSE
+    if [[ -n "$v" && -n "$files" ]]; then
+        for i in "${files[@]}"; do
+            echo "$i will be imported"
+        done
+    fi
+
     for i in "${files[@]}"; do
-        if [ -e "$i" ]; then
-            case "$i" in
-                *.deb) ExtractDEB "$i" ;;
+        case "$i" in
+            *.deb) ExtractDEB "$i" ;;
 
-                *.dylib)
-                    rsync -a "$i" "$dir/$tweakid/Custom"
-                    Verbose "Copied $(basename "$i") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
-                ;;
+            *.dylib)
+                rsync -a "$i" "$dir/$tweakid/Tweak"
+                Verbose "Copied $(basename "$i") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
+            ;;
 
-                *.framework)
-                    rsync -a "$i" "$dir/$tweakid/Custom"
-                    Verbose "Moved $(basename "$i") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
-                ;;
+            *.framework)
+                rsync -a "$i" "$dir/$tweakid/Tweak"
+                Verbose "Moved $(basename "$i") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
+            ;;
 
-                *)
-                    rsync -a "$i" Payload/*.app
-                    Verbose "Moved $(basename "$i") to app directory" "Couldn't Move $(basename "$i") to app directory"
-                ;;
-            esac
-        else
-
-            # FETCHING DEBS
-            if [ "$os" == "iOS" ] && [ -n "$a" ]; then
-                if [ -z "$rcount" ]; then
-                    if [ -z "$z" ]; then
-                        echo "Updating Sources..."
-                        echo "$pswd" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
-                        Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
-                    fi
-                    while read -r g; do echo "$pswd" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+            *)
+                rsync -a "$i" Payload/*.app
+                Verbose "Moved $(basename "$i") to app directory" "Couldn't Move $(basename "$i") to app directory"
+            ;;
+        esac
+    done
+    
+    for i in "${temp_files[@]}"; do
+    
+        # FETCHING DEBS
+        if [ "$os" == "iOS" ] && [ -n "$a" ]; then
+            if [ -z "$rcount" ]; then
+            
+                # SET ROOT PASSWORD
+                if [ -z "$pswd" ]; then
+                    pswd="alpine"
                 fi
-                rcount=1
-                echo "Fetching $i"
-                echo "$pswd" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
-                Verbose "Fetched $i" "Couldn't Fetch $i"
+                    
+                if [ -z "$z"]; then
+                    echo "Updating Sources..."
+                    echo "$pswd" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
+                    Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
+                fi
                 
-                while read -r g; do
-                    ExtractDEB "$g"
-                    echo "$pswd" | sudo -S rm -rf "$g"
-                done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+                while read -r g; do echo "$pswd" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+            fi
+            rcount=1
+            echo "Fetching $i"
+            echo "$pswd" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
+            Verbose "Fetched $i" "Couldn't Fetch $i"
+            
+            while read -r g; do
+                ExtractDEB "$g"
+                echo "$pswd" | sudo -S rm -rf "$g"
+            done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+        else
+            if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
+                ExtractDEB "$i" fetch
             else
-                if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
-                    ExtractDEB "$i" fetch
-                else
-                    echo "$i couldn't be found"
-                    exit
-                fi
+                echo "$i couldn't be found"
+                exit
             fi
         fi
     done
 
     # SPECIFYING DYLIBS
-    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
+    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # DYLIB SELECTION
     for i in "${dylibs[@]}"; do
@@ -838,9 +837,9 @@ if [ -n "$files" ]; then
         fi
     done
 
-    # INJECTING DYLIBS ### MAYBE CAN BE IMPROVED
+    # INJECTING DYLIBS
     for i in "${inject[@]}"; do
-        find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec sh -c 'rsync -a $1 Payload/*.app/Frameworks' _ {} \;
+        find "$dir/$tweakid/Tweak" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec rsync -a {} Payload/*.app/Frameworks \;
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v
 
         insert_dylib --inplace --weak --all-yes @rpath/"$i" "$executable" &> /dev/null
@@ -860,7 +859,7 @@ if [ -n "$files" ]; then
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
-    done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
+    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
@@ -927,7 +926,7 @@ if [ -n "$files" ]; then
 
     # VERBOSE
     if [[ "$status" = 0 || -z "$status" ]]; then
-        echo "Injecting $hookinglibrary Successful"
+        echo "Successfully injected $hookinglibrary"
     else
         echo "Failed injecting $hookinglibrary in $status file(s)"
     fi
