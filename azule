@@ -722,7 +722,6 @@ fi
 # PROCESSING FILES
 if [ -n "$temp_files" ]; then
 
-    # INITIALIZING ${FILES}
     for i in "${!temp_files[@]}"; do
         x="$i"
         unset indexes[@]
@@ -730,7 +729,31 @@ if [ -n "$temp_files" ]; then
             indexes+=( "$x" )
             string+=" ${temp_files[x]}"
             if [ -e "$(expand "$string")" ] && [[ -z "${temp_files[x+1]}" || ! -e "$(expand "$string ${temp_files[x+1]}")" ]]; then
-                files+=( "$(expand "$string")" )
+
+                # VERBOSE
+                if [ -n "$v" ]; then
+                    echo "$(expand "$string") will be imported"
+                fi
+
+                case "$(expand "$string")" in
+                    *.deb) ExtractDEB "$i" ;;
+
+                    *.dylib)
+                        rsync -a "$i" "$dir/$tweakid/Tweak"
+                        Verbose "Copied $(basename "$i") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
+                    ;;
+
+                    *.framework)
+                        rsync -a "$i" "$dir/$tweakid/Tweak"
+                        Verbose "Moved $(basename "$i") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
+                    ;;
+
+                    *)
+                        rsync -a "$i" Payload/*.app
+                        Verbose "Moved $(basename "$i") to app directory" "Couldn't Move $(basename "$i") to app directory"
+                    ;;
+                esac
+
                 for g in "${indexes[@]}"; do
                     unset temp_files[g]
                 done
@@ -740,34 +763,7 @@ if [ -n "$temp_files" ]; then
         done
         unset string
     done
-  
-    # VERBOSE
-    if [[ -n "$v" && -n "$files" ]]; then
-        for i in "${files[@]}"; do
-            echo "$i will be imported"
-        done
-    fi
 
-    for i in "${files[@]}"; do
-        case "$i" in
-            *.deb) ExtractDEB "$i" ;;
-
-            *.dylib)
-                rsync -a "$i" "$dir/$tweakid/Tweak"
-                Verbose "Copied $(basename "$i") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
-            ;;
-
-            *.framework)
-                rsync -a "$i" "$dir/$tweakid/Tweak"
-                Verbose "Moved $(basename "$i") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
-            ;;
-
-            *)
-                rsync -a "$i" Payload/*.app
-                Verbose "Moved $(basename "$i") to app directory" "Couldn't Move $(basename "$i") to app directory"
-            ;;
-        esac
-    done
     
     for i in "${temp_files[@]}"; do
     
