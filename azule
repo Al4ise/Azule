@@ -3,7 +3,7 @@
 # SET INITIAL DIRECTORIES
 rootdir="$PWD"
 empty_dir="$(mktemp -d)"
-cd "$empty_dir"
+cd "$empty_dir" || exit
 
 # SET PLATFORM
 case "$(uname -s)" in
@@ -135,7 +135,7 @@ Verbose () {
 expand () {
     origin_dir="$PWD"
     cd "$empty_dir" || exit
-    process_var="$(echo ${1//\\ / } | xargs)"
+    process_var="$(echo "${1//\\ / }" | xargs)"
     
     if [[ "$process_var" == .* ]]; then
         process_var="$(echo "$process_var" | sed "s|\.|$rootdir|")"
@@ -662,9 +662,9 @@ fi
 # VERBOSE
 if [ -n "$v" ]; then
     if [[ -n "$unzipped" || -n "$bfipadir" ]]; then
-        echo "Decrypted "$ipadir""
+        echo "Decrypted $ipadir"
     else
-        echo "Path to iPA is "$ipadir""
+        echo "Path to iPA is $ipadir"
     fi
 fi
 
@@ -702,10 +702,10 @@ if [ -n "$run" ]; then
     # ENCRYPTION CHECK
     while read -r i; do
         CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-        if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+        if [[ -n "$CFBundleExecutable" && -n "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
             if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/PlugIns ]]; then
                 if [ "$os" == "iOS" ]; then
-                    echo "App Couldn't be Decrypted. Try running Azule with the "-m" arguement."
+                    echo "App Couldn't be Decrypted. Try running Azule with the -m arguement."
                 else
                     echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
                 fi
@@ -731,7 +731,7 @@ if [ -n "$temp_files" ]; then
             string+=" ${temp_files[x]}"
             if [ -e "$(expand "$string")" ] && [[ -z "${temp_files[x+1]}" || ! -e "$(expand "$string ${temp_files[x+1]}")" ]]; then
                 files+=( "$(expand "$string")" )
-                for g in ${indexes[@]}; do
+                for g in "${indexes[@]}"; do
                     unset temp_files[g]
                 done
                 unset indexes[@]
@@ -780,7 +780,7 @@ if [ -n "$temp_files" ]; then
                     pswd="alpine"
                 fi
                     
-                if [ -z "$z"]; then
+                if [ -z "$z" ]; then
                     echo "Updating Sources..."
                     echo "$pswd" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
                     Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"

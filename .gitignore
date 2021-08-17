@@ -1,2 +1,6 @@
 toolchain/
 CydiaSubstrate.framework/
+.DS_Store
+iOS/
+.vscode
+Azule-iOS.deb
