@@ -142,8 +142,14 @@ expand () {
     fi
 
     if ! [ -e "$process_var" ]; then
-        if [ -e "$rootdir/$process_var" ]; then
-            process_var="$rootdir/$process_var"
+        if [ "$2" == "-f" ]; then
+            if [ -f "$rootdir/$process_var" ]; then
+                process_var="$rootdir/$process_var"
+            fi
+        else
+            if [ -e "$rootdir/$process_var" ]; then
+                process_var="$rootdir/$process_var"
+            fi
         fi
     fi
         
@@ -199,7 +205,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
                 ipadir+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
-            ipadir="$(expand "$ipadir")"
+            ipadir="$(expand "$ipadir" -f)"
         ;;
 
         o)
@@ -345,7 +351,7 @@ do true; done; fi
 if [ -z "$ipadir" ]; then while
     printf 'Path to IPA: '
     read -r tmp
-    ipadir="$(expand "$(eval "echo \$tmp")")"
+    ipadir="$(expand "$(eval "echo \$tmp")" -f)"
     [ -z "$ipadir" ] && echo "No iPA Specified"
 do true; done; fi
 
@@ -596,13 +602,33 @@ if [ -n "$drun" ]; then
             exit 1
         fi
     
+        # REMOVING PLUGINS
+        if [ -n "$e" ]; then
+            echo "Removing Extensions..."
+            while read -r i; do
+                rm -rf "$i"
+            done < <(find "$dir/$tweakid" -mindepth 3 -type d -name PlugIns)
+            Verbose "Removed Extensions" "Couldn't Remove Extensions"
+            e=2
+        fi
+
+        # REMOVING WATCH APP
+        if [ -n "$w" ]; then
+            echo "Removing Watch App..."
+            find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
+            Verbose "Removed Watch App" "Couldn't Remove Watch App"
+            w=2
+        fi
+
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
             if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
                 if [ -z "$ran" ]; then
                     echo "Decrypting App..."
                 fi
+
                 flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "$(dirname "$i")/$CFBundleExecutable" &>/dev/null
+                Verbose "Decrypted $CFBundleExecutable" "Couldn't Decrypt $CFBundleExecutable" -v
                 ran=1
             fi
         done < <(find Payload/*.app -name "Info.plist")
@@ -680,44 +706,39 @@ if [ -z "$bfipadir" ]; then
 fi
 
 # REMOVING PLUGINS
-if [ -n "$e" ]; then
+if [ "$e" == "1" ]; then
     echo "Removing Extensions..."
-    find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name PlugIns -exec rm -rf "{}" \;
+    while read -r i; do
+        rm -rf "$i"
+    done < <(find "$dir/$tweakid" -mindepth 3 -type d -name PlugIns)
     Verbose "Removed Extensions" "Couldn't Remove Extensions"
 fi
 
 # REMOVING WATCH APP
-if [ -n "$w" ]; then
+if [ "$w" == "1" ]; then
     echo "Removing Watch App..."
     find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
     Verbose "Removed Watch App" "Couldn't Remove Watch App"
 fi
 
-if [ -n "$run" ]; then
+# SETTING APP EXECUTABLE
+executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist)"
+Verbose "App executable is $executable" "Couldn't set app executable" -v
 
-    # SETTING APP EXECUTABLE
-    executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist)"
-    Verbose "App executable is $executable" "Couldn't set app executable" -v
-
-    # ENCRYPTION CHECK
-    while read -r i; do
-        CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-        if [[ -n "$CFBundleExecutable" && -n "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
-            if ! [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/PlugIns ]]; then
-                if [ "$os" == "iOS" ]; then
-                    echo "App Couldn't be Decrypted. Try running Azule with the -m arguement."
-                else
-                    echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
-                fi
-                exit 1
-            else
-                if [ -n "$v" ]; then
-                    echo "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on"
-                fi
+# ENCRYPTION CHECK
+while read -r i; do
+    CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
+    if [[ -n "$CFBundleExecutable" && -n "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+        if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
+            echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
+            exit 1
+        else
+            if [ -n "$v" ]; then
+                echo "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on"
             fi
         fi
-    done < <(find Payload/*.app -name "Info.plist")
-fi
+    fi
+done < <(find Payload/*.app -name "Info.plist")
 
 # PROCESSING FILES
 if [ -n "$temp_files" ]; then
@@ -972,7 +993,7 @@ fi
 
 # WRAPPING UP
 
-if [ -n "$run" ]; then
+if [ -n "$run" ] || [ -n "$unzipped" ]; then
     echo "Generating iPA..."
     eval "zip -rq '$output' Payload"
 else
