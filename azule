@@ -331,11 +331,12 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
             echo
             echo "  -h                           Print this help menu"
             exit 1
-            ;;
+        ;;
+
         *)
             echo "Invalid option: $*. Run "azule -h" to print the help menu."
             exit 1
-            ;;
+        ;;
     esac
 done
 

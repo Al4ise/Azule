@@ -60,10 +60,6 @@ function setup-azule() {
                 echo "You don't need to run this script on iOS"
                 exit 1
             fi
-            # Add tweak tools to PATH
-            if [ -d "$AZULE/bin/darwin" ] ; then
-                PATH="$AZULE/bin/darwin:$PATH"
-            fi
         ;;
 
         Linux)
@@ -78,12 +74,6 @@ function setup-azule() {
                 rsync --remove-source-files -a "$TMP"/ios-arm64e-clang-toolchain/* $AZULE/toolchain
                 cd $AZULE || exit
                 rm -rf "$TMP"
-                
-                # Add Tools to $PATH
-                
-                if [ -d "$AZULE/bin/linux" ]; then
-                    PATH="$AZULE/bin/linux:$PATH"
-                fi
             fi
             # Add tools to $PATH
             PATH="$AZULE/bin/linux:$PATH"
