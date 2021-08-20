@@ -67,16 +67,16 @@ case "$os" in
 
         ExtractDEB () {
             if [ "$2" = "fetch" ]; then
-                echo "Fetching $i..."
+                echo "Fetching $1..."
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
                 Verbose "Fetched $1" "Couldn't fetch $1"
                 echo "Extracting $1..."
                 dpkg -x "$1.deb" "$dir/$tweakid/Tweak"
                 rm -r "$1.deb"
             else
-                echo "Extracting $(basename "$i")..."
+                echo "Extracting $(basename "$1")..."
                 dpkg -x "$1" "$dir/$tweakid/Tweak"
-                echo "Extracted $(basename "$i")"
+                echo "Extracted $(basename "$1")"
             fi
         }
     ;;
@@ -111,7 +111,7 @@ case "$os" in
             else
                 ar -x "$1"
             fi
-            echo "Extracting $(basename "$i")..."
+            echo "Extracting $(basename "$1")..."
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
             cd "$origin_dir" || exit
@@ -226,9 +226,9 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         f) 
-            temp_files=( "$OPTARG" )
+            files=( "$OPTARG" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                temp_files+=( "$(eval "echo \${$OPTIND}")" )
+                files+=( "$(eval "echo \${$OPTIND}")" )
                 OPTIND=$((OPTIND + 1))
             done
             run=1
@@ -405,8 +405,8 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 if [ -z "$files" ]; then while
                     printf 'Files or Tweak IDs: '
                     read -r tmp
-                    temp_files=( $(eval "echo $tmp") )
-                    [ -z "$temp_files" ] && echo "No Files Provided"
+                    files=( $(eval "echo $tmp") )
+                    [ -z "$files" ] && echo "No Files Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -508,7 +508,7 @@ if [ ! -d "$outdir" ]; then
         output="$outdir"
     else
         if [ -z "$name" ]; then
-            name="$(basename "$ipadir")"
+            name="$(basename "$ipadir" .ipa)"
             for i in "${files[@]}"; do
                 name+="+$(basename "$i")"
             done
@@ -742,15 +742,15 @@ while read -r i; do
 done < <(find Payload/*.app -name "Info.plist")
 
 # PROCESSING FILES
-if [ -n "$temp_files" ]; then
+if [ -n "$files" ]; then
 
-    for i in "${!temp_files[@]}"; do
+    for i in "${!files[@]}"; do
         x="$i"
         unset indexes[@]
-        while [[ "$x" -lt "${#temp_files[@]}" ]]; do
+        while [[ "$x" -lt "${#files[@]}" ]]; do
             indexes+=( "$x" )
-            string+=" ${temp_files[x]}"
-            if [ -e "$(expand "$string")" ] && [[ -z "${temp_files[x+1]}" || ! -e "$(expand "$string ${temp_files[x+1]}")" ]]; then
+            string+=" ${files[x]}"
+            if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
 
                 # VERBOSE
                 if [ -n "$v" ]; then
@@ -758,26 +758,26 @@ if [ -n "$temp_files" ]; then
                 fi
 
                 case "$(expand "$string")" in
-                    *.deb) ExtractDEB "$i" ;;
+                    *.deb) ExtractDEB "$(expand "$string")" ;;
 
                     *.dylib)
-                        rsync -a "$i" "$dir/$tweakid/Tweak"
-                        Verbose "Copied $(basename "$i") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
+                        rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
+                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
                     ;;
 
                     *.framework)
-                        rsync -a "$i" "$dir/$tweakid/Tweak"
-                        Verbose "Moved $(basename "$i") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
+                        rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
+                        Verbose "Moved $(basename "$(expand "$string")") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
                     ;;
 
                     *)
-                        rsync -a "$i" Payload/*.app
-                        Verbose "Moved $(basename "$i") to app directory" "Couldn't Move $(basename "$i") to app directory"
+                        rsync -a "$(expand "$string")" Payload/*.app
+                        Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory"
                     ;;
                 esac
 
                 for g in "${indexes[@]}"; do
-                    unset temp_files[g]
+                    unset files[g]
                 done
                 unset indexes[@]
             fi
@@ -787,7 +787,7 @@ if [ -n "$temp_files" ]; then
     done
 
     
-    for i in "${temp_files[@]}"; do
+    for i in "${files[@]}"; do
     
         # FETCHING DEBS
         if [ "$os" == "iOS" ] && [ -n "$a" ]; then
