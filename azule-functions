@@ -53,10 +53,7 @@ function setup-azule() {
     case $(uname) in
         Darwin)
             if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
-                # Add tweak tools to PATH
-                if [ -d "$AZULE/bin/darwin" ] ; then
-                    PATH="$AZULE/bin/darwin:$PATH"
-                fi
+
                 # CHECK IF XCODE CLI UTILS EXIST
                 if ! xcode-select -p 1>/dev/null; then
                     xcode-select --install
@@ -65,13 +62,13 @@ function setup-azule() {
                 echo "You don't need to run this script on iOS"
                 exit 1
             fi
+            # Add tweak tools to PATH
+            if [ -d "$AZULE/bin/darwin" ] ; then
+                PATH="$AZULE/bin/darwin:$PATH"
+            fi
         ;;
 
         Linux)
-            # Add tweak tools to PATH
-            if [ -d "$AZULE/bin/linux" ] ; then
-                PATH="$AZULE/bin/linux:$PATH"
-            fi
             # GET TOOLCHAIN
             mkdir -p $AZULE/toolchain
             if [ ! "$(ls -A $AZULE/toolchain)" ]; then
@@ -83,6 +80,12 @@ function setup-azule() {
                 rsync --remove-source-files -a "$TMP"/ios-arm64e-clang-toolchain/* $AZULE/toolchain
                 cd $AZULE || exit
                 rm -rf "$TMP"
+                
+                # Add Tools to $PATH
+                
+                if [ -d "$AZULE/bin/linux" ]; then
+                    PATH="$AZULE/bin/linux:$PATH"
+                fi
             fi
         ;;
     esac
