@@ -77,11 +77,11 @@ function setup-azule() {
             fi
             # Add tools to $PATH
             PATH="$AZULE/bin/linux:$PATH"
-            PATH="$AZULE/toolchain/bin:$PATH"
         ;;
     esac
 
     if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
+        PATH="$AZULE/toolchain/bin:$PATH"
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
