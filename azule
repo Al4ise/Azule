@@ -744,10 +744,11 @@ done < <(find Payload/*.app -name "Info.plist")
 # PROCESSING FILES
 if [ -n "$files" ]; then
 
+    max="${#files[@]}"
     for i in "${!files[@]}"; do
         x="$i"
         unset indexes[@]
-        while [[ "$x" -lt "${#files[@]}" ]]; do
+        while [[ "$x" -lt "$max" ]]; do
             indexes+=( "$x" )
             string+=" ${files[x]}"
             if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
