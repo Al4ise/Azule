@@ -13,9 +13,7 @@ function update-azule() {
     cd $AZULE || exit
     while getopts ":fhr" args; do
         case "$args" in
-            f)
-                git reset --hard HEAD >> /dev/null
-                ;;
+            f) git reset --hard HEAD >> /dev/null ;;
 
             h)
                 echo "Usage: update-azule [options]"
@@ -30,15 +28,12 @@ function update-azule() {
                 exit 0
                 ;;
 
-            r)
-                rm -rf CydiaSubstrate.framework toolchain
-                ;;
+            r) rm -rf CydiaSubstrate.framework toolchain ;;
 
             *)
-
                 echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
                 exit 1
-                ;;
+            ;;
         esac
     done
     git pull -q
@@ -53,14 +48,14 @@ function setup-azule() {
     case $(uname) in
         Darwin)
             if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
-                # Add tweak tools to PATH
-                if [ -d "$AZULE/bin/darwin" ] ; then
-                    PATH="$AZULE/bin/darwin:$PATH"
-                fi
+
                 # CHECK IF XCODE CLI UTILS EXIST
                 if ! xcode-select -p 1>/dev/null; then
                     xcode-select --install
                 fi
+
+                # Add tools to $PATH
+                PATH="$AZULE/bin/darwin:$PATH"
             else
                 echo "You don't need to run this script on iOS"
                 exit 1
@@ -68,10 +63,6 @@ function setup-azule() {
         ;;
 
         Linux)
-            # Add tweak tools to PATH
-            if [ -d "$AZULE/bin/linux" ] ; then
-                PATH="$AZULE/bin/linux:$PATH"
-            fi
             # GET TOOLCHAIN
             mkdir -p $AZULE/toolchain
             if [ ! "$(ls -A $AZULE/toolchain)" ]; then
@@ -84,6 +75,9 @@ function setup-azule() {
                 cd $AZULE || exit
                 rm -rf "$TMP"
             fi
+            # Add tools to $PATH
+            PATH="$AZULE/bin/linux:$PATH"
+            PATH="$AZULE/toolchain/bin:$PATH"
         ;;
     esac
 

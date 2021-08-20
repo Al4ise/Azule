@@ -297,7 +297,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
         ;;
 
         h)
-            echo "Azule 0.1.8"
+            echo "Azule 0.1.9"
             echo "Mandatory Arguements:"
             echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
             echo "  -o [Path]                    Specify an output directory"
