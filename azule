@@ -123,7 +123,7 @@ esac
 # FUNCTIONS
 Verbose () {
     tv="$?"
-    if [ "$3" != "-v" ] || [[ "$3" = "-v" && -n "$v" ]]; then
+    if [ "$3" != "-v" ] || [[ "$3" = "-v" && -n "$verbose" ]]; then
         if [ "$tv" = 0 ]; then
             echo "$1"
         else
@@ -147,7 +147,7 @@ expand () {
                 process_var="$rootdir/$process_var"
             fi
         else
-            if [ -e "$rootdir/$process_var" ]; then
+            if [ -n "$process_var" ] && [ -e "$rootdir/$process_var" ]; then
                 process_var="$rootdir/$process_var"
             fi
         fi
@@ -167,184 +167,121 @@ cleanup () {
     exit
 }
 
+help () {
+    echo
+    echo "Usage: azule [arguements]"
+    echo
+    echo "Mandatory Arguements:"
+    echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
+    echo "  -o [Path]                    Specify an output directory"
+    echo
+    echo "Optional Arguements:"
+    echo "  -n [Name]                    Specify an Output Name"
+    echo "  -f [Paths/Bundle IDs]        Specify the files or tweak Bundle IDs to import"
+    echo "  -c [Version]                 Set custom version for output ipa"
+    echo "  -b [BundleId]                Set custom BundleID for output ipa"
+    echo "  -p [Name]                    Set custom Display Name for output ipa"
+    echo "  -u                           Remove UISupportedDevices from app"
+    echo "  -v                           Enable Verbose Mode"
+    echo "  -S                           Fakesigns iPA for use with AppSync"
+    echo "  -e                           Removes App Extensions"
+    echo "  -w                           Removes Watch App"
+    echo "  -r                           Skip Encryption Check"
+            
+    if [ "$os" == "iOS" ]; then
+        echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
+        echo "  -a [Root Password]           Use APT instead of Parcility"
+        echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
+        echo "  -m                           Enforce Updating Apps Before Decrypting"
+        echo "  -l                           Don't Update Outdated Apps"
+        echo "  -z                           Don't Update APT Sources (Used With -a)"
+    fi
+            
+    echo
+    echo "Examples:"
+    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
+    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
+    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
+    echo
+    echo "  -h                           Print this help menu"
+    echo
+    exit 1
+
+}
+
 # CLEAN ON EXIT
 trap "cleanup" SIGINT
+trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts :n:i:o:c:a:b:x:f:d:p:huSewmzglv args; do
+while getopts :n:i:o:c:a:b:x:f:d:p:huSewrmzglv args; do
+
+    # STUFF WITH PARAMETERS
     case "$args" in
-        n)
-            name="$OPTARG"
+        a|n|b|p|i|o|c|f)
+            tmp="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                name+=" $(eval "echo \${$OPTIND}")"
+                tmp+=" $(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
         ;;
+    esac
 
-        b)
-            bundle="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                bundle+=" $(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-            run=1
-        ;;
-
-        p)
-            displayname="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                displayname+=" $(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-            run=1
-        ;;
-
-        i)
-            ipadir="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                ipadir+=" $(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-            ipadir="$(expand "$ipadir" -f)"
-        ;;
-
-        o)
-            outdir="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                outdir+=" $(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-        ;;
-
-        c)
-            c="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                c+=" $(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-            run=1
-        ;;
-
-        f) 
-            files=( "$OPTARG" )
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                files+=( "$(eval "echo \${$OPTIND}")" )
-                OPTIND=$((OPTIND + 1))
-            done
-            run=1
-        ;;
-
-        x)
+    # iOS ONLY
+    case "$args" in
+        x|a|l|m|g|z)
             if [ "$os" != "iOS" ]; then
-                echo "-x is not supported on your platform"
+                echo "-$args is not supported on your platform"
                 exit 1
             fi
+        ;;
+    esac
+
+    case "$args" in
+
+        # STUFF WITH PARAMETERS
+        n) name="$tmp" ;;
+        b) bundle="$tmp" && run=1 ;;
+        p) displayname="$tmp" && run=1 ;;
+        i) ipadir="$(expand "$tmp" -f)" ;;
+        o) outdir="$tmp" ;;
+        c) custom_version="$tmp" && run=1 ;;
+        f) files=( $tmp ) && run=1 ;;
+        a) root_password="$tmp" ;;
+
+        # SWITCHES
+        u) remove_uisd=1 && run=1 ;;
+        v) verbose="-v" ;;
+        e) remove_extensions=1 && run=1 ;;
+        w) remove_watchapp=1 && run=1 ;;
+        S) fakesign=1 && run=1 ;;
+        r) ignore_encrypted=1 ;;
+
+        # iOS ONLY SWITCHES
+        l) ignore_outdated=1 ;;
+        m) force_update=1 ;;
+        g) flexdecrypt=1 ;;
+        z) no_apt_update=1 ;;
+
+        # Abominations
+        x)
             appleid="$OPTARG"
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                password="$(eval "echo \${$OPTIND}")"
+                appleid_password="$(eval "echo \${$OPTIND}")"
                 OPTIND=$((OPTIND + 1))
             done
         ;;
-
-        u) u=1 && run=1 ;;
-        v) v="-v" ;;
-        a) a=1
-            if [ "$os" != "iOS" ]; then
-                echo "-a is not supported on your platform"
-                exit 1
-            fi
-            pswd="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                pswd+=" $(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-        ;;
-
-        e) e=1 && run=1 ;;
-        w) w=1 && run=1 ;;
-        S) fakesign=1 && run=1 ;;
         
-        l)
-            if [ "$os" != "iOS" ]; then
-                echo "-l is not supported on your platform"
-                exit 1
-            fi
-            l=1
-        ;;
-        
-        m)
-           if [ "$os" != "iOS" ]; then
-                echo "-m is not supported on your platform"
-                exit 1
-            fi
-            m=1
-        ;;
-        
-        g)
-            if [ "$os" != "iOS" ]; then
-                echo "-g is not supported on your platform"
-                exit 1
-            fi
-            g=1
-        ;;
-        
-        z)
-            if [ "$os" != "iOS" ]; then
-                echo "-z is not supported on your platform"
-                exit 1
-            fi
-            z=1
-        ;;
+        h) help ;;
 
-        h)
-            echo "Azule 0.1.9"
-            echo "Mandatory Arguements:"
-            echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
-            echo "  -o [Path]                    Specify an output directory"
-            echo
-            echo "Optional Arguements:"
-            echo "  -n [Name]                    Specify an Output Name"
-            echo "  -f [Paths/Bundle IDs]        Specify the files or tweak Bundle IDs to import"
-            echo "  -c [Version]                 Set custom version for output ipa"
-            echo "  -b [BundleId]                Set custom BundleID for output ipa"
-            echo "  -p [Name]                    Set custom Display Name for output ipa"
-            echo "  -u                           Remove UISupportedDevices from app"
-            echo "  -v                           Enable Verbose Mode"
-            echo "  -S                           Fakesigns iPA for use with AppSync"
-            echo "  -e                           Removes App Extensions"
-            echo "  -w                           Removes Watch App"
-            
-            if [ "$os" == "iOS" ]; then
-                echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
-                echo "  -a [Root Password]           Use APT instead of Parcility"
-                echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
-                echo "  -m                           Enforce Updating Apps Before Decrypting"
-                echo "  -l                           Don't Update Outdated Apps"
-                echo "  -z                           Don't Update APT Sources (Used With -a)"
-            fi
-            
-            echo
-            echo "Examples:"
-            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
-            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
-            echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
-            echo
-            echo "  -h                           Print this help menu"
-            exit 1
-        ;;
-
-        *)
-            echo "Invalid option: $*. Run "azule -h" to print the help menu."
-            exit 1
-        ;;
+        *) echo "Invalid option: $*. Run "azule -h" for help" && exit 1 ;;
     esac
 done
 
 # READING OUTPUT DIRECTORY
 if [ -z "$outdir" ]; then while
     printf 'Output Directory: '
-    read -r tmp
-    outdir="$(eval "echo $tmp")"
+    read -r outdir
     [ -z "$outdir" ] && echo "No Output Directory Specified"
 do true; done; fi
 
@@ -352,9 +289,10 @@ do true; done; fi
 if [ -z "$ipadir" ]; then while
     printf 'Path to IPA: '
     read -r tmp
-    ipadir="$(expand "$(eval "echo \$tmp")" -f)"
+    ipadir="$(expand "$tmp")"
     [ -z "$ipadir" ] && echo "No iPA Specified"
 do true; done; fi
+
 
 if [ ! -e "$ipadir" ]; then
     if [ "$os" != "iOS" ]; then
@@ -386,6 +324,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
     "Remove Watch App"
     "Run With Verbose Mode"
     "Set Custom Output Name"
+    "Skip Encryption Check"
     )
 
     if [ "$os" == "iOS" ]; then
@@ -405,7 +344,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 if [ -z "$files" ]; then while
                     printf 'Files or Tweak IDs: '
                     read -r tmp
-                    files=( $(eval "echo $tmp") )
+                    files=( $tmp )
                     [ -z "$files" ] && echo "No Files Provided"
                 do true; done; fi
                 run=1
@@ -414,8 +353,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
             "Set Custom Output Name")
                 if [ -z "$name" ]; then while
                     printf 'New Display Name: '
-                    read -r tmp
-                    name=$(eval "echo \$tmp")
+                    read -r name
                     [ -z "$name" ] && echo "No Display Name Provided"
                 do true; done; fi
             ;;
@@ -423,19 +361,17 @@ if [[ -z "$run" && -z "$drun" ]]; then
             "Change Display Name")
                 if [ -z "$displayname" ]; then while
                     printf 'New Display Name: '
-                    read -r tmp
-                    displayname=$(eval "echo \$tmp")
+                    read -r displayname
                     [ -z "$displayname" ] && echo "No Display Name Provided"
                 do true; done; fi
                 run=1
             ;;
 
             "Change App Version")
-                if [ -z "$c" ]; then while
+                if [ -z "$custom_version" ]; then while
                     printf 'New Version: '
-                    read -r tmp
-                    c=$(eval "echo \$tmp")
-                    [ -z "$c" ] && echo "No Version Provided"
+                    read -r custom_version
+                    [ -z "$custom_version" ] && echo "No Version Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -443,24 +379,23 @@ if [[ -z "$run" && -z "$drun" ]]; then
             "Change BundleID")
                 if [ -z "$bundle" ]; then while
                     printf 'New BundleID: '
-                    read -r tmp
-                    bundle=$(eval "echo \$tmp")
+                    read -r bundle
                     [ -z "$bundle" ] && echo "No BundleID Provided"
                 do true; done; fi
                 run=1
             ;;
 
             "Remove UISupportedDevices")
-                u=1
+                remove_uisd=1
                 run=1
             ;;
 
             "Use APT instead of Parcility")
                 a=1
-                if [ -z "$pswd" ]; then
+                if [ -z "$root_password" ]; then
                     printf 'Root Password (Leave Empty for Default): '
-                    read -r tmp
-                    pswd=$(eval "echo \$tmp")
+                    read -r -s tmp
+                    root_password="$tmp"
                 fi
             ;;
 
@@ -469,23 +404,20 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 run=1
             ;;
 
-            "Do Not Update Outdated Apps") l=1 ;;
-            
-            "Don't Update APT Sources") z=1 ;;
-                    
-            "Force Update Apps") m=1 ;;
-            
-            "Decrypt Apps through Flexdecrypt") g=1 ;;
-
-            "Run With Verbose Mode") v="-v" ;;
+            "Skip Encryption Check") ignore_encrypted=1 ;;
+            "Do Not Update Outdated Apps") ignore_outdated=1 ;;
+            "Don't Update APT Sources") no_apt_update=1 ;;
+            "Force Update Apps") force_update=1 ;;
+            "Decrypt Apps through Flexdecrypt") flexdecrypt=1 ;;
+            "Run With Verbose Mode") verbose="-v" ;;
 
             "Remove Watch App")
-                w=1
+                remove_watchapp=1
                 run=1
             ;;
 
             "Remove App Extensions")
-                e=1
+                remove_extensions=1
                 run=1
             ;;
 
@@ -527,7 +459,7 @@ fi
 
 # CREATING OUTPUT DIRECTORY
 mkdir -p "$(dirname "$output")"
-Verbose "iPA will be written to $(eval echo "$output")" "$(eval echo "$output") is an invalid output path" -v
+Verbose "iPA will be written to $output" "$output is an invalid output path" -v
 
 # CREATING .TMP DIRECTORIES
 dir="$(mktemp -d)"
@@ -553,25 +485,25 @@ if [ -n "$drun" ]; then
 
     currentv="$(ExtractPlistValue CFBundleVersion "$bfplist")"
 
-    if [ -n "$currentv" ]; then l+=1; fi
+    if [ -n "$currentv" ]; then ignore_outdated+=1; fi
 
     # INSTALL UPDATES
-    if [[ "$latestv" != "$currentv" && "$l" != "11" ]] || [ -n "$m" ]; then
+    if [[ "$latestv" != "$currentv" && "$ignore_outdated" != "11" ]] || [ -n "$force_update" ]; then
 
         # VARIABLE CHECK
         if [ -z "$appleid" ]; then while
             printf 'Apple ID: '
-            read -r appleid
+            read -r -s appleid
             [ -z "$appleid" ] && echo "No Apple ID Provided"
         do true; done; fi
 
-        if [ -z "$password" ]; then while
+        if [ -z "$appleid_password" ]; then while
             printf 'Password for Apple ID: '
-            read -r password
-            [ -z "$password" ] && echo "No Password Provided"
+            read -r appleid_password
+            [ -z "$appleid_password" ] && echo "No Password Provided"
         do true; done; fi
 
-        if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$password"; then exit 1; fi
+        if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"; then exit 1; fi
         
         appinst "$dir/$tweakid"/*.ipa
 
@@ -584,7 +516,7 @@ if [ -n "$drun" ]; then
         done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
     fi
 
-    if [ -n "$g" ]; then
+    if [ -n "$flexdecrypt" ]; then
 
         # FLEXDECRYPT
 
@@ -604,26 +536,26 @@ if [ -n "$drun" ]; then
         fi
     
         # REMOVING PLUGINS
-        if [ -n "$e" ]; then
+        if [ -n "$remove_extensions" ]; then
             echo "Removing Extensions..."
             while read -r i; do
                 rm -rf "$i"
             done < <(find "$dir/$tweakid" -mindepth 3 -type d -name PlugIns)
             Verbose "Removed Extensions" "Couldn't Remove Extensions"
-            e=2
+            remove_extensions=2
         fi
 
         # REMOVING WATCH APP
-        if [ -n "$w" ]; then
+        if [ -n "$remove_watchapp" ]; then
             echo "Removing Watch App..."
             find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
             Verbose "Removed Watch App" "Couldn't Remove Watch App"
-            w=2
+            remove_watchapp=2
         fi
 
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-            if [[ -n "$CFBundleExecutable" && "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
+            if [ -n "$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
                 if [ -z "$ran" ]; then
                     echo "Decrypting App..."
                 fi
@@ -651,7 +583,7 @@ if [ -n "$drun" ]; then
         done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
 
         # PRE CLEANUP
-        find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa &>/dev/null -exec rm -rf "{}" \;
+        find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa -exec rm -rf "{}" \; &>/dev/null
 
         # BFDECRYPT SETUP
         if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
@@ -687,7 +619,7 @@ if [ -n "$drun" ]; then
 fi
 
 # VERBOSE
-if [ -n "$v" ]; then
+if [ -n "$verbose" ]; then
     if [[ -n "$unzipped" || -n "$bfipadir" ]]; then
         echo "Decrypted $ipadir"
     else
@@ -707,7 +639,7 @@ if [ -z "$bfipadir" ]; then
 fi
 
 # REMOVING PLUGINS
-if [ "$e" == "1" ]; then
+if [ "$remove_extensions" == "1" ]; then
     echo "Removing Extensions..."
     while read -r i; do
         rm -rf "$i"
@@ -716,30 +648,35 @@ if [ "$e" == "1" ]; then
 fi
 
 # REMOVING WATCH APP
-if [ "$w" == "1" ]; then
+if [ "$remove_watchapp" == "1" ]; then
     echo "Removing Watch App..."
     find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
     Verbose "Removed Watch App" "Couldn't Remove Watch App"
 fi
 
-# SETTING APP EXECUTABLE
-executable="Payload/$(basename Payload/*.app)/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Info.plist)"
+# GETTING APP NAME
+appname="$(basename Payload/*.app)"
+
+# GETTING APP EXECUTABLE
+executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
 Verbose "App executable is $executable" "Couldn't set app executable" -v
 
 # ENCRYPTION CHECK
-while read -r i; do
-    CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-    if [[ -n "$CFBundleExecutable" && -n "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]]; then
-        if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
-            echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
-            exit 1
-        else
-            if [ -n "$v" ]; then
-                echo "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on"
+if [ -z "$ignore_encrypted" ]; then
+    while read -r i; do
+        CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
+        if [ -n "$CFBundleExecutable" ] && [ -n "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
+            if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
+                echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
+                exit 1
+            else
+                if [ -n "$verbose" ]; then
+                    echo "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on"
+                fi
             fi
         fi
-    fi
-done < <(find Payload/*.app -name "Info.plist")
+    done < <(find Payload/"$appname" -name "Info.plist")
+fi
 
 # PROCESSING FILES
 if [ -n "$files" ]; then
@@ -747,14 +684,14 @@ if [ -n "$files" ]; then
     max="${#files[@]}"
     for i in "${!files[@]}"; do
         x="$i"
-        unset indexes[@]
-        while [[ "$x" -lt "$max" ]]; do
+        unset "indexes[@]"
+        while [[ "$x" -le "$max" ]]; do
             indexes+=( "$x" )
             string+=" ${files[x]}"
-            if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
 
+            if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
                 # VERBOSE
-                if [ -n "$v" ]; then
+                if [ -n "$verbose" ]; then
                     echo "$(expand "$string") will be imported"
                 fi
 
@@ -772,15 +709,15 @@ if [ -n "$files" ]; then
                     ;;
 
                     *)
-                        rsync -a "$(expand "$string")" Payload/*.app
+                        rsync -a "$(expand "$string")" Payload/"$appname"
                         Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory"
                     ;;
                 esac
 
                 for g in "${indexes[@]}"; do
-                    unset files[g]
+                    unset "files[g]"
                 done
-                unset indexes[@]
+                unset "indexes[@]"
             fi
             x=$((x + 1))
         done
@@ -795,26 +732,26 @@ if [ -n "$files" ]; then
             if [ -z "$rcount" ]; then
             
                 # SET ROOT PASSWORD
-                if [ -z "$pswd" ]; then
-                    pswd="alpine"
+                if [ -z "$root_password" ]; then
+                    root_password="alpine"
                 fi
                     
-                if [ -z "$z" ]; then
+                if [ -z "$no_apt_update" ]; then
                     echo "Updating Sources..."
-                    echo "$pswd" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
+                    echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
                     Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
                 fi
                 
-                while read -r g; do echo "$pswd" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+                while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
             fi
             rcount=1
             echo "Fetching $i"
-            echo "$pswd" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
+            echo "$root_password" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
             Verbose "Fetched $i" "Couldn't Fetch $i"
             
             while read -r g; do
                 ExtractDEB "$g"
-                echo "$pswd" | sudo -S rm -rf "$g"
+                echo "$root_password" | sudo -S rm -rf "$g"
             done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
         else
             if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
@@ -839,7 +776,7 @@ if [ -n "$files" ]; then
 
             case "$idtype" in
                 Bundles)
-                    ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/*.app/Info.plist)"
+                    ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
                     
                     if [[ "$identifier" =~ $ipabundleid ]]; then
                         inject+=( "$(basename "$i")" )
@@ -858,7 +795,7 @@ if [ -n "$files" ]; then
 
     # INJECTING DYLIBS
     for i in "${inject[@]}"; do
-        find "$dir/$tweakid/Tweak" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec rsync -a {} Payload/*.app/Frameworks \;
+        find "$dir/$tweakid/Tweak" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec rsync -a {} Payload/"$appname"/Frameworks \;
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v
 
         insert_dylib --inplace --weak --all-yes @rpath/"$i" "$executable" &> /dev/null
@@ -867,14 +804,14 @@ if [ -n "$files" ]; then
 
     # MOVING BUNDLES
     while read -r i; do
-        rsync -a "$i" Payload/*.app/
+        rsync -a "$i" Payload/"$appname"/
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
         if [ -e "$i/Info.plist" ]; then
-            rsync -a "$i" Payload/*.app/Frameworks
+            rsync -a "$i" Payload/"$appname"/Frameworks
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
@@ -882,19 +819,19 @@ if [ -n "$files" ]; then
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
-        ldid -r Payload/*.app/Frameworks/"$i"
+        ldid -r Payload/"$appname"/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
 
-        while read -r p; do links+=("$p"); done < <(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
+        while read -r p; do links+=("$p"); done < <(otool -L Payload/"$appname"/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
         for l in "${links[@]}"; do
             for x in "${inject[@]}"; do
                 if [[ "$l" =~ $x ]]; then
                     if [[ "$l" =~ $i ]]; then
-                        install_name_tool -id @rpath/"$i" Payload/*.app/Frameworks/"$i" &>/dev/null
+                        install_name_tool -id @rpath/"$i" Payload/"$appname"/Frameworks/"$i" &>/dev/null
                         tid=$(( tid + $? ))
                         break
                     else
-                        install_name_tool -change "$l" @rpath/"$x" Payload/*.app/Frameworks/"$i" &>/dev/null
+                        install_name_tool -change "$l" @rpath/"$x" Payload/"$appname"/Frameworks/"$i" &>/dev/null
                         tlnk=$(( tlnk + $? ))
                         break
                     fi
@@ -920,23 +857,23 @@ if [ -n "$files" ]; then
     hookinglibrary="CydiaSubstrate.framework"
 
     if [ "$os" == "iOS" ]; then
-        rsync -a "/var/mobile/Azule/$hookinglibrary" Payload/*.app/Frameworks
+        rsync -a "/var/mobile/Azule/$hookinglibrary" Payload/"$appname"/Frameworks
     else
-        if ! rsync -a "$AZULE/$hookinglibrary" Payload/*.app/Frameworks &>/dev/null; then
+        if ! rsync -a "$AZULE/$hookinglibrary" Payload/"$appname"/Frameworks &>/dev/null; then
             echo "Hooking Library not downloaded, please run setup-azule."
             exit 1
         fi
     fi
 
-    if [ -d Payload/*.app/Frameworks/"$hookinglibrary" ]; then
-        hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/*.app/Frameworks/"$hookinglibrary"/Info.plist)"
+    if [ -d Payload/"$appname"/Frameworks/"$hookinglibrary" ]; then
+        hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Frameworks/"$hookinglibrary"/Info.plist)"
     fi
 
     for i in "${inject[@]}"; do
-        while read -r q; do links+=("$q"); done < <(otool -L Payload/*.app/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
+        while read -r q; do links+=("$q"); done < <(otool -L Payload/"$appname"/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
         for l in "${links[@]}"; do
             if [[ "$l" =~ CydiaSubstrate.framework/CydiaSubstrate || "$l" =~ libsubstrate.dylib || "$l" =~ libsubstitute.dylib ]]; then
-                install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/*.app/Frameworks/"$i" &>/dev/null
+                install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/"$appname"/Frameworks/"$i" &>/dev/null
                 status=$(( status + $? ))
                 break
             fi
@@ -953,10 +890,10 @@ fi
 
 # REMOVING UISUPPORTEDDEVICES
 
-if [ -n "$u" ]; then
-    UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/*.app/Info.plist)"
+if [ -n "$remove_uisd" ]; then
+    UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/"$appname"/Info.plist)"
     if [ -n "$UISupportedDevices" ]; then
-        RemovePlistKey UISupportedDevices Payload/*.app/Info.plist
+        RemovePlistKey UISupportedDevices Payload/"$appname"/Info.plist
         Verbose "Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app"
     else
         echo "The specified iPA doesn't have UISupportedDevices"
@@ -966,23 +903,23 @@ fi
 # CHANGING BUNDLEID
 
 if [ -n "$bundle" ]; then
-    ReplacePlistValue "$bundle" CFBundleIdentifier Payload/*.app/Info.plist
+    ReplacePlistValue "$bundle" CFBundleIdentifier Payload/"$appname"/Info.plist
     Verbose "Changed App BundleID to $bundle" "Couldn't Change App BundleID"
 fi
 
 # CHANGING DISPLAY NAME
 
 if [ -n "$displayname" ]; then
-    ReplacePlistValue "$displayname" CFBundleDisplayName Payload/*.app/Info.plist
+    ReplacePlistValue "$displayname" CFBundleDisplayName Payload/"$appname"/Info.plist
     Verbose "Changed App Display Name to $displayname" "Couldn't Change App Display Name"
 fi
 
 # CHANGING VERSION
 
-if [ -n "$c" ]; then
-    ReplacePlistValue "$c" CFBundleVersion Payload/*.app/Info.plist
-    ReplacePlistValue "$c" CFBundleShortVersionString Payload/*.app/Info.plist
-    Verbose "Changed App Version to $c" "Couldn't Change App Version"
+if [ -n "$custom_version" ]; then
+    ReplacePlistValue "$custom_version" CFBundleVersion Payload/"$appname"/Info.plist
+    ReplacePlistValue "$custom_version" CFBundleShortVersionString Payload/"$appname"/Info.plist
+    Verbose "Changed App Version to $custom_version" "Couldn't Change App Version"
 fi
 
 # FAKESIGNING
@@ -997,7 +934,7 @@ fi
 
 if [ -n "$run" ] || [ -n "$unzipped" ]; then
     echo "Generating iPA..."
-    eval "zip -rq '$output' Payload"
+    zip -rq "$output" Payload
 else
     mv "$ipadir" "$output"
 fi
