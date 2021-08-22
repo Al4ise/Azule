@@ -67,16 +67,16 @@ case "$os" in
 
         ExtractDEB () {
             if [ "$2" = "fetch" ]; then
-                echo "Fetching $1..."
-                curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "$1.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1"
-                echo "Extracting $1..."
-                dpkg -x "$1.deb" "$dir/$tweakid/Tweak"
-                rm -r "$1.deb"
+                if [ -z "$silent_run" ]; then echo "Fetching $1..."; fi
+                curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
+                Verbose "Fetched $1" "Couldn't fetch $1" -r
+                if [ -z "$silent_run" ]; then echo "Extracting $1..."; fi
+                dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
+                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" -r
             else
-                echo "Extracting $(basename "$1")..."
+                if [ -z "$silent_run" ]; then echo "Extracting $(basename "$1")..."; fi
                 dpkg -x "$1" "$dir/$tweakid/Tweak"
-                echo "Extracted $(basename "$1")"
+                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -r
             fi
         }
     ;;
@@ -104,16 +104,18 @@ case "$os" in
             TMP=$(mktemp -d)
             cd "$TMP" || exit
             if [ "$2" = "fetch" ]; then
-                echo "Fetching $1..."
+                if [ -z "$silent_run" ]; then echo "Fetching $1..."; fi
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1"
+                Verbose "Fetched $1" "Couldn't fetch $1" -r -d "$TMP"
                 ar -x "tweak.deb"
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -r -v -d "$TMP"
             else
                 ar -x "$1"
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -r -v -d "$TMP"
             fi
-            echo "Extracting $(basename "$1")..."
+            if [ -z "$silent_run" ]; then echo "Extracting $(basename "$1")..."; fi
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-            Verbose "$(basename "$1") extracted" "Failed to extract $(basename "$1")"
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")"
             cd "$origin_dir" || exit
             rm -rf "$TMP"
         }
@@ -123,12 +125,34 @@ esac
 # FUNCTIONS
 Verbose () {
     tv="$?"
-    if [ "$3" != "-v" ] || [[ "$3" = "-v" && -n "$verbose" ]]; then
-        if [ "$tv" = 0 ]; then
-            echo "$1"
-        else
-            echo "$2"
+    if [ -z "$silent_run" ]; then mute_verbose=1; fi
+    for p in "$@"; do
+        case "$p" in
+            -v) if [ -z "$verbose" ]; then mute_verbose=1; fi ;;
+        esac
+
+        if [ "$tv" != 0 ]; then 
+            case "$p" in
+                *) if [ -e "$p" ]; then rm -rf "$p"; fi ;;
+            esac
+
+            case "$p" in
+                -d) cd "$origin_dir" || exit 1 ;;
+            esac
+        
+            case "$p" in
+                -e) cleanup ;;
+                -r) return 1 ;;
+            esac
         fi
+    done
+
+    if [ "$tv" == 0 ]; then
+        if [ -z "$mute_verbose" ]; then
+            echo "$1"
+        fi
+    else
+        echo "$2"
     fi
 }
 
@@ -146,10 +170,8 @@ expand () {
             if [ -f "$rootdir/$process_var" ]; then
                 process_var="$rootdir/$process_var"
             fi
-        else
-            if [ -n "$process_var" ] && [ -e "$rootdir/$process_var" ]; then
-                process_var="$rootdir/$process_var"
-            fi
+        elif [ -n "$process_var" ] && [ -e "$rootdir/$process_var" ]; then
+            process_var="$rootdir/$process_var"
         fi
     fi
         
@@ -183,6 +205,7 @@ help () {
     echo "  -p [Name]                    Set custom Display Name for output ipa"
     echo "  -u                           Remove UISupportedDevices from app"
     echo "  -v                           Enable Verbose Mode"
+    echo "  -s                           Silence Everything But Important Errors"
     echo "  -S                           Fakesigns iPA for use with AppSync"
     echo "  -e                           Removes App Extensions"
     echo "  -w                           Removes Watch App"
@@ -190,7 +213,7 @@ help () {
             
     if [ "$os" == "iOS" ]; then
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
-        echo "  -a [Root Password]           Use APT instead of Parcility"
+        echo "  -a [Root Password]           Use APT instead of Parcility (Leave Blank for Default Password)"
         echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
         echo "  -m                           Enforce Updating Apps Before Decrypting"
         echo "  -l                           Don't Update Outdated Apps"
@@ -214,14 +237,14 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts :n:i:o:c:a:b:x:f:d:p:huSewrmzglv args; do
+while getopts an:i:o:c:b:x:f:d:p:huSewsrmzglv args; do
 
     # STUFF WITH PARAMETERS
     case "$args" in
-        a|n|b|p|i|o|c|f)
-            tmp="$OPTARG"
+        x|a|n|b|p|i|o|c|f)
+            tmp=( "$OPTARG" )
             until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                tmp+=" $(eval "echo \${$OPTIND}")"
+                tmp+=( "$(eval "echo \${$OPTIND}")" )
                 OPTIND=$((OPTIND + 1))
             done
         ;;
@@ -229,7 +252,7 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewrmzglv args; do
 
     # iOS ONLY
     case "$args" in
-        x|a|l|m|g|z)
+        a|x|l|m|g|z)
             if [ "$os" != "iOS" ]; then
                 echo "-$args is not supported on your platform"
                 exit 1
@@ -240,14 +263,15 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewrmzglv args; do
     case "$args" in
 
         # STUFF WITH PARAMETERS
-        n) name="$tmp" ;;
-        b) bundle="$tmp" && run=1 ;;
-        p) displayname="$tmp" && run=1 ;;
-        i) ipadir="$(expand "$tmp" -f)" ;;
-        o) outdir="$tmp" ;;
-        c) custom_version="$tmp" && run=1 ;;
-        f) files=( $tmp ) && run=1 ;;
-        a) root_password="$tmp" ;;
+        n) name="${tmp[*]}" ;;
+        b) bundle="${tmp[*]}" && run=1 ;;
+        p) displayname="${tmp[*]}" && run=1 ;;
+        i) ipadir="$(expand "${tmp[*]}" -f)" ;;
+        o) outdir="${tmp[*]}" ;;
+        c) custom_version="${tmp[*]}" && run=1 ;;
+        f) files=( ${tmp[@]} ) && run=1 ;;
+        a) root_password="$(echo "${tmp[*]}" | xargs)" ;;
+        x) appleid="${tmp[0]}" && unset "tmp[0]" && appleid_password="${tmp[*]}" ;;
 
         # SWITCHES
         u) remove_uisd=1 && run=1 ;;
@@ -256,24 +280,15 @@ while getopts :n:i:o:c:a:b:x:f:d:p:huSewrmzglv args; do
         w) remove_watchapp=1 && run=1 ;;
         S) fakesign=1 && run=1 ;;
         r) ignore_encrypted=1 ;;
+        s) silent_run=1 ;;
 
         # iOS ONLY SWITCHES
         l) ignore_outdated=1 ;;
         m) force_update=1 ;;
         g) flexdecrypt=1 ;;
         z) no_apt_update=1 ;;
-
-        # Abominations
-        x)
-            appleid="$OPTARG"
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                appleid_password="$(eval "echo \${$OPTIND}")"
-                OPTIND=$((OPTIND + 1))
-            done
-        ;;
         
         h) help ;;
-
         *) echo "Invalid option: $*. Run "azule -h" for help" && exit 1 ;;
     esac
 done
@@ -457,16 +472,18 @@ else
     output="$outdir/$name.ipa"
 fi
 
+
 # CREATING OUTPUT DIRECTORY
 mkdir -p "$(dirname "$output")"
-Verbose "iPA will be written to $output" "$output is an invalid output path" -v
+test -w "$(dirname "$output")"
+Verbose "iPA will be written to $output" "$output is an invalid output path" -v -e
 
 # CREATING .TMP DIRECTORIES
 dir="$(mktemp -d)"
 
 tweakid="$RANDOM"
 mkdir -p "$dir/$tweakid/Tweak"
-Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tweak" -v
+Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tweak" -v -e
 
 cd "$dir/$tweakid" || exit
 
@@ -522,7 +539,7 @@ if [ -n "$drun" ]; then
 
         while read -r i; do
             if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                echo "Preparing App..."
+                if [ -z "$silent_run" ]; then echo "Preparing App..."; fi
                 mkdir -p Payload
                 rsync -a "$(dirname "$i")"/*.app Payload
                 unzipped=1
@@ -537,7 +554,7 @@ if [ -n "$drun" ]; then
     
         # REMOVING PLUGINS
         if [ -n "$remove_extensions" ]; then
-            echo "Removing Extensions..."
+            if [ -z "$silent_run" ]; then echo "Removing Extensions..."; fi
             while read -r i; do
                 rm -rf "$i"
             done < <(find "$dir/$tweakid" -mindepth 3 -type d -name PlugIns)
@@ -545,19 +562,16 @@ if [ -n "$drun" ]; then
             remove_extensions=2
         fi
 
-        # REMOVING WATCH APP
-        if [ -n "$remove_watchapp" ]; then
-            echo "Removing Watch App..."
-            find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
-            Verbose "Removed Watch App" "Couldn't Remove Watch App"
-            remove_watchapp=2
-        fi
+        if [ -z "$silent_run" ]; then echo "Removing Watch App..."; fi
+        find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
+        Verbose "Removed Watch App" "Couldn't Remove Watch App"
+        remove_watchapp=2
 
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
             if [ -n "$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
                 if [ -z "$ran" ]; then
-                    echo "Decrypting App..."
+                    if [ -z "$silent_run" ]; then echo "Decrypting App..."; fi
                 fi
 
                 flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "$(dirname "$i")/$CFBundleExecutable" &>/dev/null
@@ -566,10 +580,12 @@ if [ -n "$drun" ]; then
             fi
         done < <(find Payload/*.app -name "Info.plist")
     
-        if [ -n "$ran" ]; then
-            echo "Decrypted App"
-        else
-            echo "App Was Not Encrypted"
+        if [ -z "$silent_run" ]; then
+            if [ -n "$ran" ]; then
+                echo "Decrypted App"
+            else
+                echo "App Was Not Encrypted"
+            fi
         fi
     else
     
@@ -619,7 +635,7 @@ if [ -n "$drun" ]; then
 fi
 
 # VERBOSE
-if [ -n "$verbose" ]; then
+if [ -z "$silent_run" ] && [ -n "$verbose" ]; then
     if [[ -n "$unzipped" || -n "$bfipadir" ]]; then
         echo "Decrypted $ipadir"
     else
@@ -629,9 +645,9 @@ fi
 
 # EXTRACTING IPA
 if [[ -n "$run" && -z "$unzipped" ]]; then
-    echo "Extracting iPA..."
+    if [ -z "$silent_run" ]; then echo "Extracting iPA..."; fi
     unzip -q "$ipadir" -d "$dir/$tweakid"
-    Verbose "IPA extracted" "Couldn't extract IPA"
+    Verbose "IPA extracted" "Couldn't extract IPA" -e
 fi
 
 if [ -z "$bfipadir" ]; then
@@ -640,7 +656,7 @@ fi
 
 # REMOVING PLUGINS
 if [ "$remove_extensions" == "1" ]; then
-    echo "Removing Extensions..."
+    if [ -z "$silent_run" ]; then echo "Removing Extensions..."; fi
     while read -r i; do
         rm -rf "$i"
     done < <(find "$dir/$tweakid" -mindepth 3 -type d -name PlugIns)
@@ -648,8 +664,8 @@ if [ "$remove_extensions" == "1" ]; then
 fi
 
 # REMOVING WATCH APP
-if [ "$remove_watchapp" == "1" ]; then
-    echo "Removing Watch App..."
+if [ "$remove_watchapp" == "1" ] || [ -n "$bfipadir" ]; then
+    if [ -z "$silent_run" ]; then echo "Removing Watch App..."; fi
     find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
     Verbose "Removed Watch App" "Couldn't Remove Watch App"
 fi
@@ -659,7 +675,7 @@ appname="$(basename Payload/*.app)"
 
 # GETTING APP EXECUTABLE
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
-Verbose "App executable is $executable" "Couldn't set app executable" -v
+Verbose "App executable is $executable" "Couldn't set app executable" -v -e
 
 # ENCRYPTION CHECK
 if [ -z "$ignore_encrypted" ]; then
@@ -669,10 +685,8 @@ if [ -z "$ignore_encrypted" ]; then
             if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
                 echo "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted"
                 exit 1
-            else
-                if [ -n "$verbose" ]; then
-                    echo "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on"
-                fi
+            elif [ -z "$silent_run" ] && [ -n "$verbose" ]; then
+                echo "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on"
             fi
         fi
     done < <(find Payload/"$appname" -name "Info.plist")
@@ -691,7 +705,7 @@ if [ -n "$files" ]; then
 
             if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
                 # VERBOSE
-                if [ -n "$verbose" ]; then
+                if [ -z "$silent_run" ] && [ -n "$verbose" ]; then
                     echo "$(expand "$string") will be imported"
                 fi
 
@@ -737,7 +751,7 @@ if [ -n "$files" ]; then
                 fi
                     
                 if [ -z "$no_apt_update" ]; then
-                    echo "Updating Sources..."
+                    if [ -z "$silent_run" ]; then echo "Updating Sources..."; fi
                     echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
                     Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
                 fi
@@ -745,7 +759,7 @@ if [ -n "$files" ]; then
                 while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
             fi
             rcount=1
-            echo "Fetching $i"
+            if [ -z "$silent_run" ]; then echo "Fetching $i"; fi
             echo "$root_password" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
             Verbose "Fetched $i" "Couldn't Fetch $i"
             
@@ -753,13 +767,11 @@ if [ -n "$files" ]; then
                 ExtractDEB "$g"
                 echo "$root_password" | sudo -S rm -rf "$g"
             done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+        elif [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
+            ExtractDEB "$i" fetch
         else
-            if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
-                ExtractDEB "$i" fetch
-            else
-                echo "$i couldn't be found"
-                exit
-            fi
+            echo "$i couldn't be found"
+            exit
         fi
     done
 
@@ -820,7 +832,7 @@ if [ -n "$files" ]; then
     # FIXING LINKS
     for i in "${inject[@]}"; do
         ldid -r Payload/"$appname"/Frameworks/"$i"
-        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v
+        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v -e
 
         while read -r p; do links+=("$p"); done < <(otool -L Payload/"$appname"/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
         for l in "${links[@]}"; do
@@ -841,16 +853,18 @@ if [ -n "$files" ]; then
     done
 
     # VERBOSE
-    if [[ "$tid" = 0 || -z "$tid" ]]; then
-        echo "ID Successful"
-    else
-        echo "$tid file(s) failed to ID"
-    fi
+    if [ -z "$silent_run" ]; then
+        if [[ "$tid" = 0 || -z "$tid" ]]; then
+            echo "ID Successful"
+        else
+            echo "$tid file(s) failed to ID"
+        fi
 
-    if [[ "$tlnk" = 0 || -z "$tlnk" ]]; then
-        echo "Re-Link Successful"
-    else
-        echo "$tlnk Re-Links failed"
+        if [[ "$tlnk" = 0 || -z "$tlnk" ]]; then
+            echo "Re-Link Successful"
+        else
+            echo "$tlnk Re-Links failed"
+        fi
     fi
 
     # INJECT HOOKING LIBRARY
@@ -858,11 +872,9 @@ if [ -n "$files" ]; then
 
     if [ "$os" == "iOS" ]; then
         rsync -a "/var/mobile/Azule/$hookinglibrary" Payload/"$appname"/Frameworks
-    else
-        if ! rsync -a "$AZULE/$hookinglibrary" Payload/"$appname"/Frameworks &>/dev/null; then
-            echo "Hooking Library not downloaded, please run setup-azule."
-            exit 1
-        fi
+    elif ! rsync -a "$AZULE/$hookinglibrary" Payload/"$appname"/Frameworks &>/dev/null; then
+        echo "Hooking Library not downloaded, please run setup-azule."
+        exit 1
     fi
 
     if [ -d Payload/"$appname"/Frameworks/"$hookinglibrary" ]; then
@@ -881,10 +893,12 @@ if [ -n "$files" ]; then
     done
 
     # VERBOSE
-    if [[ "$status" = 0 || -z "$status" ]]; then
-        echo "Successfully injected $hookinglibrary"
-    else
-        echo "Failed injecting $hookinglibrary in $status file(s)"
+    if [ -z "$silent_run" ]; then
+        if [[ "$status" = 0 || -z "$status" ]]; then
+            echo "Successfully injected $hookinglibrary"
+        else
+            echo "Failed injecting $hookinglibrary in $status file(s)"
+        fi
     fi
 fi
 
@@ -896,7 +910,7 @@ if [ -n "$remove_uisd" ]; then
         RemovePlistKey UISupportedDevices Payload/"$appname"/Info.plist
         Verbose "Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app"
     else
-        echo "The specified iPA doesn't have UISupportedDevices"
+        if [ -z "$silent_run" ]; then echo "The specified iPA doesn't have UISupportedDevices"; fi
     fi
 fi
 
@@ -925,7 +939,7 @@ fi
 # FAKESIGNING
 
 if [ -n "$fakesign" ]; then
-    echo "Fakesigning iPA..."
+    if [ -z "$silent_run" ]; then echo "Fakesigning iPA..."; fi
     ldid -S -M Payload/* &>/dev/null
     Verbose "Fakesigned iPA" "Couldn't Fakesign iPA"
 fi
@@ -933,7 +947,7 @@ fi
 # WRAPPING UP
 
 if [ -n "$run" ] || [ -n "$unzipped" ]; then
-    echo "Generating iPA..."
+    if [ -z "$silent_run" ]; then echo "Generating iPA..."; fi
     zip -rq "$output" Payload
 else
     mv "$ipadir" "$output"
