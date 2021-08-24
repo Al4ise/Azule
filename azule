@@ -1,5 +1,7 @@
 #!/bin/bash
 
+shopt -s extglob
+
 # SET INITIAL DIRECTORIES
 rootdir="$PWD"
 empty_dir="$(mktemp -d)"
@@ -125,25 +127,15 @@ esac
 # FUNCTIONS
 Verbose () {
     tv="$?"
-    if [ -z "$silent_run" ]; then mute_verbose=1; fi
+    if [ -n "$silent_run" ]; then mute_verbose=1; fi
     for p in "$@"; do
-        case "$p" in
-            -v) if [ -z "$verbose" ]; then mute_verbose=1; fi ;;
-        esac
+        if [ "$p" == "-v" ] && [ -z "$verbose" ]; then mute_verbose=1; fi
 
         if [ "$tv" != 0 ]; then 
-            case "$p" in
-                *) if [ -e "$p" ]; then rm -rf "$p"; fi ;;
-            esac
-
-            case "$p" in
-                -d) cd "$origin_dir" || exit 1 ;;
-            esac
-        
-            case "$p" in
-                -e) cleanup ;;
-                -r) return 1 ;;
-            esac
+            if [ -e "$p" ]; then rm -rf "$p"; fi
+            if [ "$p" == "-d" ]; then cd "$origin_dir" || exit 1; fi
+            if [ "$p" == "-e" ]; then cleanup; fi
+            if [ "$p" == "-r" ]; then return 1; fi
         fi
     done
 
@@ -240,25 +232,21 @@ trap "cleanup" EXIT
 while getopts an:i:o:c:b:x:f:d:p:huSewsrmzglv args; do
 
     # STUFF WITH PARAMETERS
-    case "$args" in
-        x|a|n|b|p|i|o|c|f)
-            tmp=( "$OPTARG" )
-            until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-                tmp+=( "$(eval "echo \${$OPTIND}")" )
-                OPTIND=$((OPTIND + 1))
-            done
-        ;;
-    esac
+    if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
+        tmp=( "$OPTARG" )
+        until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
+            tmp+=( "$(eval "echo \${$OPTIND}")" )
+            OPTIND=$((OPTIND + 1))
+        done
+    fi
 
     # iOS ONLY
-    case "$args" in
-        a|x|l|m|g|z)
-            if [ "$os" != "iOS" ]; then
-                echo "-$args is not supported on your platform"
-                exit 1
-            fi
-        ;;
-    esac
+    if [[ "$args" == @(a|x|l|m|g|z) ]]; then
+        if [ "$os" != "iOS" ]; then
+            echo "-$args is not supported on your platform"
+            exit 1
+        fi
+    fi
 
     case "$args" in
 
@@ -604,6 +592,7 @@ if [ -n "$drun" ]; then
         # BFDECRYPT SETUP
         if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
             cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
+            plutil -key selectedApplications -array /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
             plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
         fi
 
@@ -702,7 +691,6 @@ if [ -n "$files" ]; then
         while [[ "$x" -le "$max" ]]; do
             indexes+=( "$x" )
             string+=" ${files[x]}"
-
             if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
                 # VERBOSE
                 if [ -z "$silent_run" ] && [ -n "$verbose" ]; then
@@ -727,7 +715,7 @@ if [ -n "$files" ]; then
                         Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory"
                     ;;
                 esac
-
+                unset string
                 for g in "${indexes[@]}"; do
                     unset "files[g]"
                 done
@@ -735,7 +723,6 @@ if [ -n "$files" ]; then
             fi
             x=$((x + 1))
         done
-        unset string
     done
 
     
