@@ -4,6 +4,9 @@ A tool used to inject jailbreak tweaks into jailed iOS apps.
 ### Testers on M1 Macs Needed 
 You can contact me at @al4ise on Twitter if you are willing to help
 
+### Paypal link, just in case you are crazy enough :)
+https://www.paypal.com/paypalme/ala1se
+
 ## For installation instructions [click here](https://github.com/Al4ise/Azule/wiki)
 
 ## Features
