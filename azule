@@ -302,12 +302,24 @@ if [ ! -e "$ipadir" ]; then
         echo "Invalid iPA"
         exit 1
     else
-        # CHECK FOR UPDATES
+        # CHECK IF APP IS ON THE APP STORE
         latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
     
         if [ -z "$latestv" ]; then
-            echo "Invalid App"
-            exit 1
+
+            # CHECK IF APP IS INSTALLED
+
+            while read -r i; do
+                if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                    status=1
+                    break
+                fi
+            done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+
+            if [ -z "$status" ]; then
+                echo "Invalid App"
+                exit 1
+            fi
         fi
         drun=1
     fi
@@ -459,7 +471,6 @@ else
     fi
     output="$outdir/$name.ipa"
 fi
-
 
 # CREATING OUTPUT DIRECTORY
 mkdir -p "$(dirname "$output")"
