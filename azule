@@ -575,7 +575,7 @@ if [ -n "$drun" ]; then
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
             if [ -n "$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
-                if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
+                if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$bfbinary" ]]; then
                     bfdecrypt=1
                     break
                 fi
@@ -583,9 +583,9 @@ if [ -n "$drun" ]; then
         done < <(find "$(dirname "$bfplist")" -name "Info.plist")
 
         if [ -n "$bfdecrypt" ]; then
-            while read -r x; do
-                if [ "$(ExtractPlistValue MCMMetadataIdentifier "$x")" = "$ipadir" ]; then
-                    bfipadir="$(dirname "$x")/Documents/decrypted-app.ipa"
+            while read -r i; do
+                if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                    bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
                     break
                 fi
             done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
