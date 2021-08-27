@@ -258,7 +258,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrmzglv args; do
         o) outdir="${tmp[*]}" ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) files=( ${tmp[@]} ) && run=1 ;;
-        a) root_password="$(echo "${tmp[*]}" | xargs)" ;;
+        a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
         x) appleid="${tmp[0]}" && unset "tmp[0]" && appleid_password="${tmp[*]}" ;;
 
         # SWITCHES
@@ -407,7 +407,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
             ;;
 
             "Use APT instead of Parcility")
-                a=1
+                apt=1
                 if [ -z "$root_password" ]; then
                     printf 'Root Password (Leave Empty for Default): '
                     read -r -s tmp
@@ -511,13 +511,13 @@ if [ -n "$drun" ]; then
             # VARIABLE CHECK
             if [ -z "$appleid" ]; then while
                 printf 'Apple ID: '
-                read -r -s appleid
+                read -r appleid
                 [ -z "$appleid" ] && echo "No Apple ID Provided"
             do true; done; fi
 
             if [ -z "$appleid_password" ]; then while
                 printf 'Password for Apple ID: '
-                read -r appleid_password
+                read -r -s appleid_password
                 [ -z "$appleid_password" ] && echo "No Password Provided"
             do true; done; fi
 
@@ -733,7 +733,7 @@ if [ -n "$files" ]; then
     for i in "${files[@]}"; do
     
         # FETCHING DEBS
-        if [ "$os" == "iOS" ] && [ -n "$a" ]; then
+        if [ "$os" == "iOS" ] && [ -n "$apt" ]; then
             if [ -z "$rcount" ]; then
             
                 # SET ROOT PASSWORD
