@@ -502,10 +502,9 @@ if [ -n "$drun" ]; then
 
     currentv="$(ExtractPlistValue CFBundleVersion "$bfplist")"
 
-    if [ -n "$currentv" ]; then ignore_outdated+=1; fi
-
     # INSTALL APP UPDATES
     if [ "$ignore_outdated" != "2" ]; then
+        if [ -n "$currentv" ]; then ignore_outdated+=1; fi
         if [[ "$latestv" != "$currentv" && "$ignore_outdated" != "11" ]] || [ -n "$force_update" ]; then
 
             # VARIABLE CHECK
@@ -531,20 +530,10 @@ if [ -n "$drun" ]; then
 
         # FLEXDECRYPT
 
-        while read -r i; do
-            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                if [ -z "$silent_run" ]; then echo "Preparing App..."; fi
-                mkdir -p Payload
-                rsync -a "$(dirname "$i")"/*.app Payload
-                unzipped=1
-                break
-            fi
-        done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
-    
-        if [ -z "$unzipped" ]; then
-            echo "Couldn't find app"
-            exit 1
-        fi
+        if [ -z "$silent_run" ]; then echo "Preparing App..."; fi
+        mkdir -p Payload
+        rsync -a "$(dirname "$bfplist")" Payload
+        unzipped=1
     
         # REMOVING PLUGINS
         if [ -n "$remove_extensions" ]; then
@@ -584,45 +573,61 @@ if [ -n "$drun" ]; then
         # BFDECRYPT
         
         while read -r i; do
-            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
-                break
+            CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
+            if [ -n "$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
+                if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
+                    bfdecrypt=1
+                    break
+                fi
             fi
-        done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
+        done < <(find "$(dirname "$bfplist")" -name "Info.plist")
 
-        # PRE CLEANUP
-        find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa -exec rm -rf "{}" \; &>/dev/null
+        if [ -n "$bfdecrypt" ]; then
+            while read -r x; do
+                if [ "$(ExtractPlistValue MCMMetadataIdentifier "$x")" = "$ipadir" ]; then
+                    bfipadir="$(dirname "$x")/Documents/decrypted-app.ipa"
+                    break
+                fi
+            done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
 
-        # BFDECRYPT SETUP
-        if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
-            cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
-            plutil -key selectedApplications -array /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
-            plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
-        fi
+            # PRE CLEANUP
+            find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa -exec rm -rf "{}" \; &>/dev/null
 
-        # KILL APP
-        PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
-        if [ -n "$PID" ]; then
-            kill -9 "$PID"
-        fi
+            # BFDECRYPT SETUP
+            if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
+                cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
+                plutil -key selectedApplications -array /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+                plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
+            fi
 
-        # LAUNCH APP
-        open "$ipadir"
+            # KILL APP
+            PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
+            if [ -n "$PID" ]; then
+                kill -9 "$PID"
+            fi
 
-        # WAIT FOR IPA
-        until [ -e "$bfipadir" ]; do :; done
-        while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
+            # LAUNCH APP
+            open "$ipadir"
 
-        # KILL APP
-        PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
-        kill -9 "$PID" &>/dev/null
+            # WAIT FOR IPA
+            until [ -e "$bfipadir" ]; do :; done
+            while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
 
-        # SET NEW IPADIR
-        ipadir="$bfipadir"
+            # KILL APP
+            PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
+            kill -9 "$PID" &>/dev/null
 
-        # CLEANUP
-        if [ -e "$dir/$tweakid/bfbackup.plist" ]; then
-            mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
+            # SET NEW IPADIR
+            ipadir="$bfipadir"
+
+            # CLEANUP
+            if [ -e "$dir/$tweakid/bfbackup.plist" ]; then
+                mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
+            fi
+        else
+            mkdir -p Payload
+            rsync -a "$(dirname "$bfplist")" Payload
+            unzipped=1
         fi
     fi
 fi
