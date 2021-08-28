@@ -127,16 +127,14 @@ esac
 # FUNCTIONS
 Verbose () {
     tv="$?"
+    if [ -z "$?" ]; then tv=0; fi
+    
+    unset mute_verbose
+    
     if [ -n "$silent_run" ]; then mute_verbose=1; fi
+
     for p in "$@"; do
         if [ "$p" == "-v" ] && [ -z "$verbose" ]; then mute_verbose=1; fi
-
-        if [ "$tv" != 0 ]; then 
-            if [ -e "$p" ]; then rm -rf "$p"; fi
-            if [ "$p" == "-d" ]; then cd "$origin_dir" || exit 1; fi
-            if [ "$p" == "-e" ]; then cleanup; fi
-            if [ "$p" == "-r" ]; then return 1; fi
-        fi
     done
 
     if [ "$tv" == 0 ]; then
@@ -146,6 +144,15 @@ Verbose () {
     else
         echo "$2"
     fi
+
+    for p in "$@"; do
+        if [ "$tv" != 0 ]; then 
+            if [ -e "$p" ]; then rm -rf "$p"; fi
+            if [ "$p" == "-d" ]; then cd "$origin_dir" || exit 1; fi
+            if [ "$p" == "-e" ]; then cleanup; fi
+            if [ "$p" == "-r" ]; then return 1; fi
+        fi
+    done
 }
 
 expand () {
