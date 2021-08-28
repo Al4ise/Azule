@@ -490,20 +490,18 @@ cd "$dir/$tweakid" || exit
 # DECRYPTION
 if [ -n "$drun" ]; then
 
-    # GET BINARY
-    
-    while read -r i; do
-        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-            bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
-            bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
-            break
-        fi
-    done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
-
-    currentv="$(ExtractPlistValue CFBundleVersion "$bfplist")"
-
     # INSTALL APP UPDATES
     if [ "$ignore_outdated" != "2" ]; then
+
+        # GET CURRENT VERSION
+        while read -r i; do
+            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
+                currentv="$(ExtractPlistValue CFBundleVersion "$bfplist")"
+                break
+            fi
+        done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+
         if [ -n "$currentv" ]; then ignore_outdated+=1; fi
         if [[ "$latestv" != "$currentv" && "$ignore_outdated" != "11" ]] || [ -n "$force_update" ]; then
 
@@ -525,6 +523,14 @@ if [ -n "$drun" ]; then
             appinst "$dir/$tweakid"/*.ipa
         fi
     fi
+
+    while read -r i; do
+        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+            bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
+            bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
+            break
+        fi
+    done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
 
     if [ -n "$flexdecrypt" ]; then
 
