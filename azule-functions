@@ -14,6 +14,7 @@ function update-azule() {
     while getopts ":fhr" args; do
         case "$args" in
             f) git reset --hard HEAD >> /dev/null ;;
+            r) rm -rf lib toolchain ;;
 
             h)
                 echo "Usage: update-azule [options]"
@@ -26,14 +27,9 @@ function update-azule() {
                 echo "  -r     Redownload the latest mobilesubstrate and linux toolchains."
                 echo "  -h     Print this help menu."
                 exit 0
-                ;;
-
-            r) rm -rf CydiaSubstrate.framework toolchain ;;
-
-            *)
-                echo 'Invalid argument. Run "update-azule -h" to print the help menu.'
-                exit 1
             ;;
+
+            *) echo 'Invalid argument. Run "update-azule -h" to print the help menu.' && exit 1 ;;
         esac
     done
     git pull -q
@@ -41,9 +37,7 @@ function update-azule() {
 }
 
 function setup-azule() {
-    if [ -z ${currentdir+x} ]; then
-        currentdir="$PWD"
-    fi
+    currentdir="$PWD"
     cd $AZULE || exit
     case $(uname) in
         Darwin)
@@ -80,8 +74,9 @@ function setup-azule() {
         ;;
     esac
 
-    if [ ! -d "$AZULE/CydiaSubstrate.framework" ]; then
+    if [ ! -d "$AZULE/lib/CydiaSubstrate.framework" ] || [ ! -e "$AZULE/lib/libsubstrate.dylib" ]; then
         PATH="$AZULE/toolchain/bin:$PATH"
+        mkdir -p "$AZULE/lib"
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
@@ -89,13 +84,26 @@ function setup-azule() {
         ar -x "substrate.deb"
         tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+        rsync -a "$TMP"/libsubstrate.dylib "$AZULE/lib/libsubstrate.dylib"
+        echo "Downloaded libsubstrate.dylib"
         mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
         mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
-        mv CydiaSubstrate.framework $AZULE/CydiaSubstrate.framework
-        cd $AZULE || exit
+        mv CydiaSubstrate.framework "$AZULE"/lib/CydiaSubstrate.framework
         rm -rf "$TMP"
-        plutil -convert binary1 "CydiaSubstrate.framework/Info.plist" || true
+        plutil -convert binary1 "$AZULE/lib/CydiaSubstrate.framework/Info.plist" || true
         echo "Downloaded CydiaSubstrate.framework"
+    fi
+
+    if [ ! -e "$AZULE/lib/libsubstitute.dylib" ]; then
+        TMP="$(mktemp -d)"
+        cd "$TMP" || exit 
+        echo "Downloading Substitute..."
+        curl -sS "$(curl -sS https://api.parcility.co/db/package/com.ex.substitute/sbingner | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o substitute.deb
+        ar -x "substitute.deb"
+        tar --lzma --strip-components 2 -xf data.tar.lzma "./usr/lib"
+        mv libsubstitute.dylib "$AZULE/lib/libsubstitute.dylib"
+        echo "Downloaded Substitute"
+        rm -rf "$TMP"
     fi
 
     cd "$currentdir" || exit

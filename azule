@@ -705,15 +705,16 @@ fi
 
 # PROCESSING FILES
 if [ -n "$files" ]; then
-
     max="${#files[@]}"
     for i in "${!files[@]}"; do
         x="$i"
+        unset string
         unset "indexes[@]"
         while [[ "$x" -le "$max" ]]; do
             indexes+=( "$x" )
             string+=" ${files[x]}"
             if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
+
                 # VERBOSE
                 if [ -z "$silent_run" ] && [ -n "$verbose" ]; then
                     echo "$(expand "$string") will be imported"
@@ -877,27 +878,30 @@ if [ -n "$files" ]; then
     fi
 
     # INJECT HOOKING LIBRARY
-    hookinglibrary="CydiaSubstrate.framework"
+    for hookinglibrary in "libsubstitute.dylib" "libsubstrate.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
+        for i in "${inject[@]}"; do
+            while read -r q; do links+=("$q"); done < <(otool -L "Payload/$appname/Frameworks/$i" | sort -u | cut -d ' ' -f1)
+            for l in "${links[@]}"; do
+                if [[ "$l" =~ $hookinglibrary ]]; then
+                    if [ ! -e "Payload/$appname/Frameworks/$hookinglibrary" ]; then
+                        if [[ "$hookinglibrary" =~ .framework ]]; then
+                            hl_file="$(dirname "$hookinglibrary")"
+                        else
+                            hl_file="$hookinglibrary"
+                        fi
 
-    if [ "$os" == "iOS" ]; then
-        rsync -a "/var/mobile/Azule/$hookinglibrary" Payload/"$appname"/Frameworks
-    elif ! rsync -a "$AZULE/$hookinglibrary" Payload/"$appname"/Frameworks &>/dev/null; then
-        echo "Hooking Library not downloaded, please run setup-azule."
-        exit 1
-    fi
-
-    if [ -d Payload/"$appname"/Frameworks/"$hookinglibrary" ]; then
-        hookinglibrary="$hookinglibrary/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Frameworks/"$hookinglibrary"/Info.plist)"
-    fi
-
-    for i in "${inject[@]}"; do
-        while read -r q; do links+=("$q"); done < <(otool -L Payload/"$appname"/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
-        for l in "${links[@]}"; do
-            if [[ "$l" =~ CydiaSubstrate.framework/CydiaSubstrate || "$l" =~ libsubstrate.dylib || "$l" =~ libsubstitute.dylib ]]; then
-                install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/"$appname"/Frameworks/"$i" &>/dev/null
-                status=$(( status + $? ))
-                break
-            fi
+                        if [ "$os" == "iOS" ]; then
+                            rsync -a "/var/mobile/Azule/lib/$hl_file" "Payload/$appname/Frameworks"
+                        elif ! rsync -a "$AZULE/lib/$hl_file" "Payload/$appname/Frameworks" &>/dev/null; then
+                            echo "$hl_file not downloaded, please run setup-azule."
+                            exit 1
+                        fi
+                    fi
+                    install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/"$appname"/Frameworks/"$i" &>/dev/null
+                    status=$(( status + $? ))
+                    break
+                fi
+            done
         done
     done
 
@@ -954,6 +958,9 @@ if [ -n "$fakesign" ]; then
 fi
 
 # WRAPPING UP
+if [ -e "$output" ]; then
+    rm -rf "$output"
+fi
 
 if [ -n "$run" ] || [ -n "$unzipped" ]; then
     if [ -z "$silent_run" ]; then echo "Generating iPA..."; fi
