@@ -73,12 +73,14 @@ case "$os" in
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched $1" "Couldn't fetch $1" -r
                 if [ -z "$silent_run" ]; then echo "Extracting $1..."; fi
+                imported_debs+=( "$(dpkg -f "tweak.deb" Package)" )
                 dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" -r
+                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" -e
             else
                 if [ -z "$silent_run" ]; then echo "Extracting $(basename "$1")..."; fi
+                imported_debs+=( "$(dpkg -f "$1" Package)" )
                 dpkg -x "$1" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -r
+                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -e
             fi
         }
     ;;
@@ -108,16 +110,16 @@ case "$os" in
             if [ "$2" = "fetch" ]; then
                 if [ -z "$silent_run" ]; then echo "Fetching $1..."; fi
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" -r -d "$TMP"
+                Verbose "Fetched $1" "Couldn't fetch $1" -e "$TMP"
                 ar -x "tweak.deb"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -r -v -d "$TMP"
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e "$TMP"
             else
                 ar -x "$1"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -r -v -d "$TMP"
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e "$TMP"
             fi
             if [ -z "$silent_run" ]; then echo "Extracting $(basename "$1")..."; fi
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")"
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -e
             cd "$origin_dir" || exit
             rm -rf "$TMP"
         }
@@ -148,7 +150,11 @@ Verbose () {
     for p in "$@"; do
         if [ "$tv" != 0 ]; then 
             if [ -e "$p" ]; then rm -rf "$p"; fi
-            if [ "$p" == "-d" ]; then cd "$origin_dir" || exit 1; fi
+        fi
+    done
+
+    for p in "$@"; do
+        if [ "$tv" != 0 ]; then 
             if [ "$p" == "-e" ]; then cleanup; fi
             if [ "$p" == "-r" ]; then return 1; fi
         fi
@@ -185,6 +191,7 @@ cleanup () {
     fi
     rm -rf "$dir"
     rm -rf "$empty_dir"
+    cd "$rootdir" || exit
     exit
 }
 
@@ -725,17 +732,17 @@ if [ -n "$files" ]; then
 
                     *.dylib)
                         rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v
+                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v -e
                     ;;
 
                     *.framework)
                         rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Moved $(basename "$(expand "$string")") to work directory" "Couldn't Move $(basename "$i") to work directory" -v
+                        Verbose "Moved $(basename "$(expand "$string")") to work directory" "Couldn't Move $(basename "$i") to work directory" -v -e
                     ;;
 
                     *)
                         rsync -a "$(expand "$string")" Payload/"$appname"
-                        Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory"
+                        Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory" -e
                     ;;
                 esac
                 unset string
@@ -748,7 +755,6 @@ if [ -n "$files" ]; then
         done
     done
 
-    
     for i in "${files[@]}"; do
     
         # FETCHING DEBS
@@ -765,18 +771,51 @@ if [ -n "$files" ]; then
                     echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
                     Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
                 fi
-                
-                while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
             fi
+            while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
             rcount=1
-            if [ -z "$silent_run" ]; then echo "Fetching $i"; fi
-            echo "$root_password" | sudo -S apt-get install --download-only "$i" -y --allow-unauthenticated &>/dev/null
-            Verbose "Fetched $i" "Couldn't Fetch $i"
+
+            mkdir -p "$dir/$tweakid/DEBs"
+            apt_packages+=( "$i" $(echo "$root_password" | sudo -S apt-cache depends "$i" | grep ': ' | cut -d: -f2 | xargs) )
+
+            # DEPENDENCY MANAGEMENT
+            until [ "${apt_packages[*]}" == "${apt_packages_old[*]}" ]; do
+                apt_packages_old="${apt_packages[*]}"
+
+                # FILTER UNNEEDED PACKAGES
+                for var in "${!apt_packages[@]}"; do
+                    if [[ "${apt_packages[var]}" == @(firmware|<mobilesubstrate>|com.ex.substitute|org.coolstar.libhooker) ]]; then
+                        unset "apt_packages[var]"
+                    else
+                        for d in "${imported_debs[@]}"; do
+                            if [ "$d" == "${apt_packages[var]}" ]; then
+                                unset "apt_packages[var]"
+                            fi
+                        done
+                    fi
+                done
             
+                # DOWNLOADING PACKAGES
+                for x in "${apt_packages[@]}"; do
+                    if [ -z "$silent_run" ]; then echo "Fetching $x"; fi
+                    echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
+                    Verbose "Fetched $x" "Couldn't Fetch $x" -e
+                done
+
+                # CHECKING FOR UNSATISFIED DEPENDENCIES
+                while read -r g; do
+                    tmp="$(dpkg -f "$g" Package)"
+                    apt_packages+=( $(echo "$root_password" | sudo -S apt-cache depends "$tmp" | grep ': ' | cut -d: -f2 | xargs) )
+                    imported_debs+=( "$tmp" )
+                    echo "$root_password" | sudo -S mv "$g" "$dir/$tweakid/DEBs"
+                done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+            done
+
             while read -r g; do
                 ExtractDEB "$g"
-                echo "$root_password" | sudo -S rm -rf "$g"
-            done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+                sudo -S rm -rf "$g"
+            done < <(find "$dir/$tweakid/DEBs" -maxdepth 1 -iname '*.deb')
+
         elif [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
             ExtractDEB "$i" fetch
         else
@@ -818,23 +857,23 @@ if [ -n "$files" ]; then
     # INJECTING DYLIBS
     for i in "${inject[@]}"; do
         find "$dir/$tweakid/Tweak" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec rsync -a {} Payload/"$appname"/Frameworks \;
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
 
         insert_dylib --inplace --weak --all-yes @rpath/"$i" "$executable" &> /dev/null
-        Verbose "Injected $i" "Couldn't inject $i"
+        Verbose "Injected $i" "Couldn't inject $i" -e
     done
 
     # MOVING BUNDLES
     while read -r i; do
         rsync -a "$i" Payload/"$appname"/
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
         if [ -e "$i/Info.plist" ]; then
             rsync -a "$i" Payload/"$appname"/Frameworks
-            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory"
+            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
