@@ -766,7 +766,7 @@ if [ -n "$files" ]; then
                     root_password="alpine"
                 fi
                     
-                if [ -z "$no_apt_update" ]; then
+                if [ -z "$no_apt_update" ]; thena
                     if [ -z "$silent_run" ]; then echo "Updating Sources..."; fi
                     echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
                     Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
@@ -776,7 +776,7 @@ if [ -n "$files" ]; then
             rcount=1
 
             mkdir -p "$dir/$tweakid/DEBs"
-            apt_packages+=( "$i" $(echo "$root_password" | sudo -S apt-cache depends "$i" | grep ': ' | cut -d: -f2 | xargs) )
+            apt_packages+=( "$i" $(apt-cache depends "$i" | grep ': ' | cut -d: -f2 | xargs) )
 
             # DEPENDENCY MANAGEMENT
             until [ "${apt_packages[*]}" == "${apt_packages_old[*]}" ]; do
@@ -805,7 +805,7 @@ if [ -n "$files" ]; then
                 # CHECKING FOR UNSATISFIED DEPENDENCIES
                 while read -r g; do
                     tmp="$(dpkg -f "$g" Package)"
-                    apt_packages+=( $(echo "$root_password" | sudo -S apt-cache depends "$tmp" | grep ': ' | cut -d: -f2 | xargs) )
+                    apt_packages+=( $(apt-cache depends "$tmp" | grep ': ' | cut -d: -f2 | xargs) )
                     imported_debs+=( "$tmp" )
                     echo "$root_password" | sudo -S mv "$g" "$dir/$tweakid/DEBs"
                 done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
