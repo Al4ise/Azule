@@ -4,7 +4,7 @@
 export AZULE=~/Azule
 
 # Add azule commands to PATH
-if [ -d "$AZULE" ] ; then
+if [ -d "$AZULE" ]; then
     PATH="$AZULE:$PATH"
 fi
 
@@ -33,6 +33,7 @@ function update-azule() {
         esac
     done
     git pull -q
+    cd "$currentdir" || exit
     setup-azule
 }
 
@@ -70,12 +71,12 @@ function setup-azule() {
                 rm -rf "$TMP"
             fi
             # Add tools to $PATH
+            PATH="$AZULE/toolchain/bin:$PATH"
             PATH="$AZULE/bin/linux:$PATH"
         ;;
     esac
 
     if [ ! -d "$AZULE/lib/CydiaSubstrate.framework" ] || [ ! -e "$AZULE/lib/libsubstrate.dylib" ]; then
-        PATH="$AZULE/toolchain/bin:$PATH"
         mkdir -p "$AZULE/lib"
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
@@ -89,8 +90,9 @@ function setup-azule() {
         mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
         mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         mv CydiaSubstrate.framework "$AZULE"/lib/CydiaSubstrate.framework
+        cd || exit
         rm -rf "$TMP"
-        plutil -convert binary1 "$AZULE/lib/CydiaSubstrate.framework/Info.plist" || true
+        plutil -convert binary1 $AZULE/lib/CydiaSubstrate.framework/Info.plist
         echo "Downloaded CydiaSubstrate.framework"
     fi
 
@@ -100,9 +102,10 @@ function setup-azule() {
         echo "Downloading Substitute..."
         curl -sS "$(curl -sS https://api.parcility.co/db/package/com.ex.substitute/sbingner | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o substitute.deb
         ar -x "substitute.deb"
-        tar --lzma --strip-components 2 -xf data.tar.lzma "./usr/lib"
+        tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
         mv libsubstitute.dylib "$AZULE/lib/libsubstitute.dylib"
         echo "Downloaded Substitute"
+        cd || exit
         rm -rf "$TMP"
     fi
 
