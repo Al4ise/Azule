@@ -224,7 +224,7 @@ help () {
         echo "  -m                           Enforce Updating Apps Before Decrypting"
         echo "  -l                           Don't Update Outdated Apps"
         echo "  -z                           Don't Update APT Sources (Used With -a)"
-        echo "  -j                           Don't recurse into APT dependencies (Used With -a)"
+        echo "  -j                           Don't install package dependencies (Used With -a)"
     fi
             
     echo
@@ -244,7 +244,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:d:p:huSewsrmzglv args; do
+while getopts an:i:o:c:b:x:f:d:p:huSewsrjmzglv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -256,7 +256,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrmzglv args; do
     fi
 
     # iOS ONLY
-    if [[ "$args" == @(a|x|l|m|g|z) ]]; then
+    if [[ "$args" == @(a|x|l|m|g|z|j) ]]; then
         if [ "$os" != "iOS" ]; then
             echo "-$args is not supported on your platform"
             exit 1
@@ -286,6 +286,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrmzglv args; do
         s) silent_run=1 ;;
 
         # iOS ONLY SWITCHES
+        j) no_recurse=1 ;;
         l) ignore_outdated=1 ;;
         m) force_update=1 ;;
         g) flexdecrypt=1 ;;
@@ -772,34 +773,38 @@ if [ -n "$files" ]; then
 
         while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
 
-        for j in "${files[@]}"; do
-            tmp=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w") )
-            rm_packages=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | grep ": " | cut -d: -f2 | xargs) )
+        if [ -n "$no_recurse" ]; then
+            apt_packages=( "${files[@]}" )
+        else
+            for j in "${files[@]}"; do
+                tmp=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w") )
+                apt_or=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | grep ": " | cut -d: -f2 | xargs) )
 
-            for o in "${!rm_packages[@]}"; do
-                if [ -n "$(apt -qq list "${rm_packages[o]}" 2>/dev/null)" ]; then
-                    unset "rm_packages[o]"
-                    break
-                fi
+                for o in "${!apt_or[@]}"; do
+                    if [ -n "$(apt -qq list "${apt_or[o]}" 2>/dev/null)" ]; then
+                        unset "apt_or[o]"
+                        break
+                    fi
+                done
+                rm_packages+=("${apt_or[@]}")
+                for t in "${tmp[@]}"; do
+                    if [[ "$t" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|firmware) ]]; then
+                        rm_packages+=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$t" | grep "^\w") )
+                    fi
+                done
+                apt_packages+=( ${tmp[@]} )
             done
-            
-            for t in "${tmp[@]}"; do
-                if [[ "$t" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|firmware) ]]; then
-                    rm_packages+=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$t" | grep "^\w") )
-                fi
-            done
-            apt_packages+=( ${tmp[@]} )
-        done
 
-        for q in "${!apt_packages[@]}"; do
-            for z in "${!rm_packages[@]}"; do
-                if [ "${apt_packages[q]}" == "${rm_packages[z]}" ]; then
-                    unset "apt_packages[q]"
-                    unset "rm_packages[z]"
-                    break
-                fi
+            for q in "${!apt_packages[@]}"; do
+                for z in "${!rm_packages[@]}"; do
+                    if [ "${apt_packages[q]}" == "${rm_packages[z]}" ]; then
+                        unset "apt_packages[q]"
+                        unset "rm_packages[z]"
+                        break
+                    fi
+                done
             done
-        done
+        fi
 
         # DOWNLOADING PACKAGES
         for x in "${apt_packages[@]}"; do
