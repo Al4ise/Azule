@@ -224,6 +224,7 @@ help () {
         echo "  -m                           Enforce Updating Apps Before Decrypting"
         echo "  -l                           Don't Update Outdated Apps"
         echo "  -z                           Don't Update APT Sources (Used With -a)"
+        echo "  -j                           Don't recurse into APT dependencies (Used With -a)"
     fi
             
     echo
@@ -754,75 +755,74 @@ if [ -n "$files" ]; then
             x=$((x + 1))
         done
     done
-
-    for i in "${files[@]}"; do
     
-        # FETCHING DEBS
-        if [ "$os" == "iOS" ] && [ -n "$apt" ]; then
-            if [ -z "$rcount" ]; then
+    # FETCHING DEBS
+    if [ "$os" == "iOS" ] && [ -n "$apt" ]; then
             
-                # SET ROOT PASSWORD
-                if [ -z "$root_password" ]; then
-                    root_password="alpine"
-                fi
-                    
-                if [ -z "$no_apt_update" ]; then
-                    if [ -z "$silent_run" ]; then echo "Updating Sources..."; fi
-                    echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
-                    Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
-                fi
-            fi
-            while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
-            rcount=1
-
-            mkdir -p "$dir/$tweakid/DEBs"
-            apt_packages+=( "$i" $(apt-cache depends "$i" | grep ': ' | cut -d: -f2 | xargs) )
-
-            # DEPENDENCY MANAGEMENT
-            until [ "${apt_packages[*]}" == "${apt_packages_old[*]}" ]; do
-                apt_packages_old="${apt_packages[*]}"
-
-                # FILTER UNNEEDED PACKAGES
-                for var in "${!apt_packages[@]}"; do
-                    if [[ "${apt_packages[var]}" == @(firmware|<mobilesubstrate>|com.ex.substitute|org.coolstar.libhooker) ]]; then
-                        unset "apt_packages[var]"
-                    else
-                        for d in "${imported_debs[@]}"; do
-                            if [ "$d" == "${apt_packages[var]}" ]; then
-                                unset "apt_packages[var]"
-                            fi
-                        done
-                    fi
-                done
-            
-                # DOWNLOADING PACKAGES
-                for x in "${apt_packages[@]}"; do
-                    if [ -z "$silent_run" ]; then echo "Fetching $x"; fi
-                    echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
-                    Verbose "Fetched $x" "Couldn't Fetch $x" -e
-                done
-
-                # CHECKING FOR UNSATISFIED DEPENDENCIES
-                while read -r g; do
-                    tmp="$(dpkg -f "$g" Package)"
-                    apt_packages+=( $(apt-cache depends "$tmp" | grep ': ' | cut -d: -f2 | xargs) )
-                    imported_debs+=( "$tmp" )
-                    echo "$root_password" | sudo -S mv "$g" "$dir/$tweakid/DEBs"
-                done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
-            done
-
-            while read -r g; do
-                ExtractDEB "$g"
-                sudo -S rm -rf "$g"
-            done < <(find "$dir/$tweakid/DEBs" -maxdepth 1 -iname '*.deb')
-
-        elif [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
-            ExtractDEB "$i" fetch
-        else
-            echo "$i couldn't be found"
-            exit
+        # SET ROOT PASSWORD
+        if [ -z "$root_password" ]; then
+            root_password="alpine"
         fi
-    done
+
+        if [ -z "$no_apt_update" ]; then
+            if [ -z "$silent_run" ]; then echo "Updating Sources..."; fi
+            echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
+            Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
+        fi
+
+        while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+
+        for j in "${files[@]}"; do
+            tmp=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w") )
+            rm_packages=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | grep ": " | cut -d: -f2 | xargs) )
+
+            for o in "${!rm_packages[@]}"; do
+                if [ -n "$(apt -qq list "${rm_packages[o]}" 2>/dev/null)" ]; then
+                    unset "rm_packages[o]"
+                    break
+                fi
+            done
+            
+            for t in "${tmp[@]}"; do
+                if [[ "$t" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|firmware) ]]; then
+                    rm_packages+=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$t" | grep "^\w") )
+                fi
+            done
+            apt_packages+=( ${tmp[@]} )
+        done
+
+        for q in "${!apt_packages[@]}"; do
+            for z in "${!rm_packages[@]}"; do
+                if [ "${apt_packages[q]}" == "${rm_packages[z]}" ]; then
+                    unset "apt_packages[q]"
+                    unset "rm_packages[z]"
+                    break
+                fi
+            done
+        done
+
+        # DOWNLOADING PACKAGES
+        for x in "${apt_packages[@]}"; do
+            if [ -z "$silent_run" ]; then echo "Fetching $x"; fi
+            echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
+            Verbose "Fetched $x" "Couldn't Fetch $x" -e
+        done
+
+        while read -r g; do
+            ExtractDEB "$g"
+            sudo -S rm -rf "$g"
+        done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+        
+    else
+        for i in "${files[@]}"; do
+            if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
+                ExtractDEB "$i" fetch
+            else
+                echo "$i couldn't be found"
+                exit
+            fi
+        done
+    fi
 
     # SPECIFYING DYLIBS
     while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
