@@ -864,7 +864,7 @@ if [ -n "$files" ]; then
         find "$dir/$tweakid/Tweak" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec rsync -a {} Payload/"$appname"/Frameworks \;
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
 
-        insert_dylib --inplace --weak --all-yes @rpath/"$i" "$executable" &> /dev/null
+        insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &> /dev/null
         Verbose "Injected $i" "Couldn't inject $i" -e
     done
 
