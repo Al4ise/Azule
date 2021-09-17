@@ -168,6 +168,8 @@ expand () {
     
     if [[ "$process_var" == .* ]]; then
         process_var="$(echo "$process_var" | sed "s|\.|$rootdir|")"
+    elif [[ "$process_var" == ~* ]]; then
+        process_var="$(echo "$process_var" | sed "s|\~|$HOME|")"
     fi
 
     if ! [ -e "$process_var" ]; then
