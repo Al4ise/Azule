@@ -887,7 +887,7 @@ if [ -n "$files" ]; then
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
-        ldid -r Payload/"$appname"/Frameworks/"$i"
+        ldid -r -M Payload/"$appname"/Frameworks/"$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v -e
 
         while read -r p; do links+=("$p"); done < <(otool -L Payload/"$appname"/Frameworks/"$i" | sort -u | cut -d ' ' -f1)

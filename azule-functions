@@ -81,7 +81,7 @@ function setup-azule() {
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
-        curl -sSL "$(curl -sS https://api.parcility.co/db/package/mobilesubstrate/sbingner | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o substrate.deb
+        curl -sSL https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
         ar -x "substrate.deb"
         tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
@@ -100,7 +100,7 @@ function setup-azule() {
         TMP="$(mktemp -d)"
         cd "$TMP" || exit 
         echo "Downloading Substitute..."
-        curl -sS "$(curl -sS https://api.parcility.co/db/package/com.ex.substitute/sbingner | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o substitute.deb
+        curl -sS https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.0_iphoneos-arm.deb -o substitute.deb
         ar -x "substitute.deb"
         tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
         mv libsubstitute.dylib "$AZULE/lib/libsubstitute.dylib"
