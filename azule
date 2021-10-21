@@ -71,16 +71,16 @@ case "$os" in
             if [ "$2" = "fetch" ]; then
                 if [ -z "$silent_run" ]; then echo "Fetching $1..."; fi
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" -r
+                Verbose "Fetched $1" "Couldn't fetch $1" -e -r -i
                 if [ -z "$silent_run" ]; then echo "Extracting $1..."; fi
                 imported_debs+=( "$(dpkg -f "tweak.deb" Package)" )
                 dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" -e
+                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" -r -e -i
             else
                 if [ -z "$silent_run" ]; then echo "Extracting $(basename "$1")..."; fi
                 imported_debs+=( "$(dpkg -f "$1" Package)" )
                 dpkg -x "$1" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -e
+                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -r -e -i
             fi
         }
     ;;
@@ -110,17 +110,20 @@ case "$os" in
             if [ "$2" = "fetch" ]; then
                 if [ -z "$silent_run" ]; then echo "Fetching $1..."; fi
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" -e "$TMP"
+                Verbose "Fetched $1" "Couldn't fetch $1" -r -e "$TMP" -i
                 ar -x "tweak.deb"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e "$TMP"
+                status="$?"
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e -r "$TMP" -i -x
             else
                 ar -x "$1"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e "$TMP"
+                status="$?"
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e -r "$TMP" -i -x
             fi
             if [ -z "$silent_run" ]; then echo "Extracting $(basename "$1")..."; fi
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -e
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -r -e "$TMP" -i
             cd "$origin_dir" || exit
+            unset origin_dir
             rm -rf "$TMP"
         }
     ;;
@@ -129,16 +132,17 @@ esac
 # FUNCTIONS
 Verbose () {
     tv="$?"
-    if [ -z "$?" ]; then tv=0; fi
-    
     unset mute_verbose
-    
-    if [ -n "$silent_run" ]; then mute_verbose=1; fi
+    unset injectable
 
+    if [ -n "$silent_run" ]; then mute_verbose=1; fi
     for p in "$@"; do
         if [ "$p" == "-v" ] && [ -z "$verbose" ]; then mute_verbose=1; fi
+        if [ "$p" == "-x" ]; then tv="$status" && unset status; fi
+        if [ "$p" == "-i" ]; then injectable=1; fi
     done
-
+    
+    if [ -z "$tv" ]; then tv=0; fi
     if [ "$tv" == 0 ]; then
         if [ -z "$mute_verbose" ]; then
             echo "$1"
@@ -153,10 +157,17 @@ Verbose () {
         fi
     done
 
+    if ! [[ -n "$ignore_injectable_errors" && -n "$injectable" ]]; then
+        for p in "$@"; do
+            if [ "$tv" != 0 ]; then 
+                if [ "$p" == "-e" ]; then cleanup; fi
+            fi
+        done
+    fi
+
     for p in "$@"; do
         if [ "$tv" != 0 ]; then 
-            if [ "$p" == "-e" ]; then cleanup; fi
-            if [ "$p" == "-r" ]; then return 1; fi
+            if [ "$p" == "-r" ]; then return 1 && cd "$origin_dir" && unset origin_dir; fi
         fi
     done
 }
@@ -183,7 +194,7 @@ expand () {
     fi
         
     cd "$origin_dir" || exit
-    
+    unset origin_dir
     echo "$process_var"
 }
 
@@ -218,6 +229,7 @@ help () {
     echo "  -e                           Removes App Extensions"
     echo "  -w                           Removes Watch App"
     echo "  -r                           Skip Encryption Check"
+    echo "  -k                           Ignore file to inject not found"
             
     if [ "$os" == "iOS" ]; then
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
@@ -246,7 +258,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:d:p:huSewsrjmzglv args; do
+while getopts an:i:o:c:b:x:f:d:p:huSewsrjmzkglv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -286,6 +298,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrjmzglv args; do
         S) fakesign=1 && run=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
+        k) ignore_injectable_errors=1 ;;
 
         # iOS ONLY SWITCHES
         j) no_recurse=1 ;;
@@ -491,6 +504,12 @@ else
     output="$outdir/$name.ipa"
 fi
 
+if [[ ${#output} -gt 264 ]]; then
+    output="${output::${#output}-4}"
+    characters_to_remove=$(( ${#output} - 264 ))
+    output="${output::${#output}-$characters_to_remove}.ipa"
+    echo "Shortened File Name"
+fi
 # CREATING OUTPUT DIRECTORY
 mkdir -p "$(dirname "$output")"
 test -w "$(dirname "$output")"
@@ -607,12 +626,13 @@ if [ -n "$drun" ]; then
         done < <(find "$(dirname "$bfplist")" -name "Info.plist")
 
         if [ -n "$bfdecrypt" ]; then
+
             while read -r i; do
                 if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
                     bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
                     break
                 fi
-            done < <(find /var/mobile/Containers/Data/Application -name .com.apple.mobile_container_manager.metadata.plist 2>/dev/null)
+            done < <(find /var/mobile/Containers/Data/Application -mindepth 2 -maxdepth 2 -name .com.apple.mobile_container_manager.metadata.plist)
 
             # PRE CLEANUP
             find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa -exec rm -rf "{}" \; &>/dev/null
@@ -732,21 +752,23 @@ if [ -n "$files" ]; then
                 fi
 
                 case "$(expand "$string")" in
-                    *.deb) ExtractDEB "$(expand "$string")" ;;
+                    *.deb) 
+                        ExtractDEB "$(expand "$string")"
+                    ;;
 
                     *.dylib)
                         rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v -e
+                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v -e -i
                     ;;
 
                     *.framework)
                         rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Moved $(basename "$(expand "$string")") to work directory" "Couldn't Move $(basename "$i") to work directory" -v -e
+                        Verbose "Moved $(basename "$(expand "$string")") to work directory" "Couldn't Move $(basename "$i") to work directory" -v -e -i
                     ;;
 
                     *)
                         rsync -a "$(expand "$string")" Payload/"$appname"
-                        Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory" -e
+                        Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory" -e -i
                     ;;
                 esac
                 unset string
@@ -812,7 +834,7 @@ if [ -n "$files" ]; then
         for x in "${apt_packages[@]}"; do
             if [ -z "$silent_run" ]; then echo "Fetching $x"; fi
             echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
-            Verbose "Fetched $x" "Couldn't Fetch $x" -e
+            Verbose "Fetched $x" "Couldn't Fetch $x" -e -i
         done
 
         while read -r g; do
@@ -825,8 +847,10 @@ if [ -n "$files" ]; then
             if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
                 ExtractDEB "$i" fetch
             else
-                echo "$i couldn't be found"
-                exit
+                if [ -z "$ignore_injectable_errors" ]; then 
+                    echo "$i couldn't be found" 
+                    cleanup
+                fi
             fi
         done
     fi
@@ -873,22 +897,22 @@ if [ -n "$files" ]; then
     # MOVING BUNDLES
     while read -r i; do
         rsync -a "$i" Payload/"$appname"/
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e 
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
         if [ -e "$i/Info.plist" ]; then
             rsync -a "$i" Payload/"$appname"/Frameworks
-            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
+            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e 
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
-        ldid -r -M Payload/"$appname"/Frameworks/"$i"
-        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v -e
+        #ldid -r -M Payload/"$appname"/Frameworks/"$i" &>/dev/null
+        #Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v -e 
 
         while read -r p; do links+=("$p"); done < <(otool -L Payload/"$appname"/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
         for l in "${links[@]}"; do
@@ -951,14 +975,7 @@ if [ -n "$files" ]; then
         done
     done
 
-    # VERBOSE
-    if [ -z "$silent_run" ]; then
-        if [[ "$status" = 0 || -z "$status" ]]; then
-            echo "Successfully injected $hookinglibrary"
-        else
-            echo "Failed injecting $hookinglibrary in $status file(s)"
-        fi
-    fi
+    Verbose "Successfully injected $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" -x
 fi
 
 # REMOVING UISUPPORTEDDEVICES
@@ -999,7 +1016,10 @@ fi
 
 if [ -n "$fakesign" ]; then
     if [ -z "$silent_run" ]; then echo "Fakesigning iPA..."; fi
-    ldid -S -M Payload/* &>/dev/null
+        while read -r i; do
+            ldid -S -M "$i"
+            Verbose "Fakesigned $(basename "$i")" "Couldn't Fakesign $(basename "$i")" -v
+        done < <(find Payload -type f ! -name "*.*" ! -name "CodeResources" ! -name PkgInfo)
     Verbose "Fakesigned iPA" "Couldn't Fakesign iPA"
 fi
 
