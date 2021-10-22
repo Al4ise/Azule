@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Set Environment Variable
-export AZULE=~/Azule
+if [[ -z "$AZULE" ]]; then
+    export AZULE="$HOME/Azule"
+fi
 
 # Add azule commands to PATH
 if [ -d "$AZULE" ]; then
