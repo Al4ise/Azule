@@ -214,7 +214,11 @@ cleanup () {
     rm -rf "$dir"
     rm -rf "$empty_dir"
     cd "$rootdir" || exit
-    exit
+    if [ -z "$run_successful" ]; then
+        exit 1
+    else
+        exit 0
+    fi
 }
 
 help () {
@@ -1038,5 +1042,7 @@ else
     mv "$ipadir" "$output"
 fi
 Verbose "Generated IPA at $output" "Couldn't generate IPA"
+
+run_successful=1
 
 cleanup
