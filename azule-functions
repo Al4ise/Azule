@@ -1,14 +1,10 @@
 #!/bin/bash
 
 # Set Environment Variable
-if [[ -z "$AZULE" ]]; then
-    export AZULE="$HOME/Azule"
-fi
+export AZULE="$HOME/Azule"
 
 # Add azule commands to PATH
-if [ -d "$AZULE" ]; then
-    PATH="$AZULE:$PATH"
-fi
+PATH="$AZULE:$PATH"
 
 function update-azule() {
     currentdir="$PWD"
