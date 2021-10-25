@@ -215,7 +215,9 @@ cleanup () {
     rm -rf "$empty_dir"
     cd "$rootdir" || exit
     if [ -z "$run_successful" ]; then
-        exit 1
+        if [ -z "$ignore_errors" ]; then
+            exit 1
+        fi
     else
         exit 0
     fi
@@ -242,7 +244,8 @@ help () {
     echo "  -e                           Removes App Extensions"
     echo "  -w                           Removes Watch App"
     echo "  -r                           Skip Encryption Check"
-    echo "  -k                           Ignore file to inject not found"
+    echo "  -k                           Ignore unfound files to inject"
+    echo "  -q                           Ignore errors"
             
     if [ "$os" == "iOS" ]; then
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
@@ -271,7 +274,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:d:p:huSewsrjmzkglv args; do
+while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzkglv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -311,6 +314,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrjmzkglv args; do
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
         k) ignore_injectable_errors=1 ;;
+        q) ignore_errors=1 ;;
 
         # iOS ONLY SWITCHES
         j) no_recurse=1 ;;
@@ -610,7 +614,7 @@ if [ -n "$drun" ]; then
 
                 flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "$(dirname "$i")/$CFBundleExecutable" &>/dev/null
                 Verbose "Decrypted $CFBundleExecutable" "Couldn't Decrypt $CFBundleExecutable" -v
-                status=1
+                status=0
             fi
         done < <(find Payload/*.app -name "Info.plist")
     
@@ -720,6 +724,9 @@ appname="$(basename Payload/*.app)"
 # GETTING APP EXECUTABLE
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
 Verbose "App executable is $executable" "Couldn't set app executable" -v -e
+rpath="$(expand "$(otool -l "$executable" | grep RPATH -A2 | tail -1 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | sed "s|@executable_path|Payload/$appname|g" 
+)")"
+Verbose "App rpath is $executable" "Couldn't set app rpath" -v -e
 
 # ENCRYPTION CHECK
 if [ -z "$ignore_encrypted" ]; then
@@ -753,7 +760,7 @@ if [ -n "$files" ]; then
                     *.deb) 
                         ExtractDEB "$(expand "$string")"
                     ;;
-
+                    
                     *.dylib)
                         rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
                         Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v -e -i
@@ -859,6 +866,8 @@ if [ -n "$files" ]; then
     for i in "${dylibs[@]}"; do
         if ! [ -e "${i%.*}.plist" ]; then
             inject+=( "$(basename "$i")" )
+            rsync -a "$i" "$rpath"
+            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
             idtype="$(ExtractPlistValue Filter "${i%.*}".plist key)"
@@ -869,12 +878,16 @@ if [ -n "$files" ]; then
                     
                     if [[ "$identifier" =~ $ipabundleid ]]; then
                         inject+=( "$(basename "$i")" )
+                        rsync -a "$i" "$rpath"
+                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
                     fi
                 ;;
 
                 Executables)
                     if [[ "$identifier" =~ $(basename "$executable") ]]; then
                         inject+=( "$(basename "$i")" )
+                        rsync -a "$i" "$rpath"
+                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
                     fi
                 ;;
                 
@@ -882,13 +895,70 @@ if [ -n "$files" ]; then
         fi
     done
 
-    # INJECTING DYLIBS
-    while read -r p; do exec_dylibs+=("$p"); done < <(otool -L "$executable" | grep '.dylib' | cut -d ' ' -f1)
+    # MOVING FRAMEWORKS TO APP DIRECTORY
+    while read -r i; do
+        if [ -e "$i/Info.plist" ]; then
+            rsync -a "$i" "$rpath"
+            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
+            inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+        fi
+    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
+
+    # MOVING BUNDLES
+    while read -r i; do
+        rsync -a "$i" Payload/"$appname"/
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
+    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
+
+    # FIXING LINKS
+    for i in "${inject[@]}"; do
+        ldid -r -M "$rpath/$i" &>/dev/null
+        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v -e 
+
+        while read -r p; do links+=("$p"); done < <(otool -L "$rpath/$i" | sort -u | cut -d ' ' -f1)
+        for l in "${links[@]}"; do
+            for x in "${inject[@]}"; do
+                if [[ "$l" =~ $x ]]; then
+                    if [[ "$l" =~ $i ]]; then
+                        install_name_tool -id @rpath/"$i" "$rpath/$i" &>/dev/null
+                        tid=$(( tid + $? ))
+                        break
+                    else
+                        install_name_tool -change "$l" @rpath/"$x" "$rpath/$i" &>/dev/null
+                        if ! [[ "${linked[*]}" =~ $x ]]; then
+                            linked+=( "$x" )
+                        fi
+                        tlnk=$(( tlnk + $? ))
+                        break
+                    fi
+                fi
+            done
+        done
+    done
+
+    # VERBOSE
+    status="$tid"
+    if [ -n "$tid" ]; then
+        Verbose "ID Successful" "$tid file(s) failed to ID" -x
+    fi
+
+    status="$tlnk"
+    if [ -n "$tlnk" ]; then
+        Verbose "Re-Link Successful" "$tlnk Re-Links failed" -x
+    fi
+
+    for i in "${!inject[@]}"; do
+        for l in "${linked[@]}"; do
+            if [ "${inject[i]}" = "$l" ]; then
+                unset "inject[i]"
+            fi
+        done
+    done
+
+    # INJECTING LIBRARIES
+    while read -r p; do exec_dylibs+=("$p"); done < <(otool -L "$executable" | cut -d ' ' -f1)
 
     for i in "${inject[@]}"; do
-        find "$dir/$tweakid/Tweak" ! -type l -name "$i" ! -path '*.bundle/*' ! -path '*.framework/*' -exec rsync -a {} Payload/"$appname"/Frameworks \;
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
-
         for l in "${exec_dylibs[@]}"; do
             if [[ "$l" =~ /"$i" ]]; then
                 dont_inject=1
@@ -904,64 +974,14 @@ if [ -n "$files" ]; then
         fi
     done
 
-    # MOVING FRAMEWORKS TO APP DIRECTORY
-    while read -r i; do
-        if [ -e "$i/Info.plist" ]; then
-            rsync -a "$i" Payload/"$appname"/Frameworks
-            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
-            inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
-        fi
-    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
-
-    # CREATE FRAMEWORKS FOLDER IF NEEDED
-    if [ -n "$inject" ]; then 
-        mkdir -p Payload/"$appname"/Frameworks
-        install_name_tool -add_rpath @executable_path/Frameworks "$executable" &>/dev/null
-    fi
-
-    # MOVING BUNDLES
-    while read -r i; do
-        rsync -a "$i" Payload/"$appname"/
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
-    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
-
-    # FIXING LINKS
-    for i in "${inject[@]}"; do
-        ldid -r -M Payload/"$appname"/Frameworks/"$i" &>/dev/null
-        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v -e 
-
-        while read -r p; do links+=("$p"); done < <(otool -L Payload/"$appname"/Frameworks/"$i" | sort -u | cut -d ' ' -f1)
-        for l in "${links[@]}"; do
-            for x in "${inject[@]}"; do
-                if [[ "$l" =~ $x ]]; then
-                    if [[ "$l" =~ $i ]]; then
-                        install_name_tool -id @rpath/"$i" Payload/"$appname"/Frameworks/"$i" &>/dev/null
-                        tid=$(( tid + $? ))
-                        break
-                    else
-                        install_name_tool -change "$l" @rpath/"$x" Payload/"$appname"/Frameworks/"$i" &>/dev/null
-                        tlnk=$(( tlnk + $? ))
-                        break
-                    fi
-                fi
-            done
-        done
-    done
-
-    # VERBOSE
-    status="$tid"
-    Verbose "ID Successful" "$tid file(s) failed to ID" -x
-    status="$tlnk"
-    Verbose "Re-Link Successful" "$tlnk Re-Links failed" -x
-
     # INJECT HOOKING LIBRARY
     if [ -n "$inject" ]; then
         for hookinglibrary in "libsubstitute.dylib" "libsubstrate.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
             for i in "${inject[@]}"; do
-                while read -r q; do links+=("$q"); done < <(otool -L "Payload/$appname/Frameworks/$i" | sort -u | cut -d ' ' -f1)
+                while read -r q; do links+=("$q"); done < <(otool -L "$rpath/$i" | sort -u | cut -d ' ' -f1)
                 for l in "${links[@]}"; do
                     if [[ "$l" =~ $hookinglibrary ]]; then
-                        if [ ! -e "Payload/$appname/Frameworks/$hookinglibrary" ]; then
+                        if [ ! -e "$rpath/$hookinglibrary" ]; then
                             if [[ "$hookinglibrary" =~ .framework ]]; then
                                 hl_file="$(dirname "$hookinglibrary")"
                             else
@@ -969,19 +989,21 @@ if [ -n "$files" ]; then
                             fi
 
                             if [ "$os" == "iOS" ]; then
-                                rsync -a "/var/mobile/Azule/lib/$hl_file" "Payload/$appname/Frameworks"
-                            elif ! rsync -a "$AZULE/lib/$hl_file" "Payload/$appname/Frameworks" &>/dev/null; then
+                                rsync -a "/var/mobile/Azule/lib/$hl_file" "$rpath"
+                            elif ! rsync -a "$AZULE/lib/$hl_file" "$rpath" &>/dev/null; then
                                 Verbose "$hl_file not downloaded, please run setup-azule." -a -k
                             fi
                         fi
-                        install_name_tool -change "$l" @rpath/"$hookinglibrary" Payload/"$appname"/Frameworks/"$i" &>/dev/null
+                        install_name_tool -change "$l" @rpath/"$hookinglibrary" "$rpath/$i" &>/dev/null
                         status=$(( status + $? ))
                         break
                     fi
                 done
             done
         done
-        Verbose "Successfully injected $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" -x
+        if [ -n "$status" ]; then
+            Verbose "Successfully injected $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" -x
+        fi
     fi
 fi
 
