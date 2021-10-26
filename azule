@@ -860,7 +860,7 @@ if [ -n "$files" ]; then
     fi
 
     # SPECIFYING DYLIBS
-    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib' ! -path '*.bundle/*' ! -path '*.framework/*')
+    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # DYLIB SELECTION
     for i in "${dylibs[@]}"; do
@@ -902,13 +902,13 @@ if [ -n "$files" ]; then
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
-    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*.bundle/*' ! -path '*.framework/*')
+    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # MOVING BUNDLES
     while read -r i; do
         rsync -a "$i" Payload/"$appname"/
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
-    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
+    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
