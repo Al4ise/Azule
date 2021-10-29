@@ -860,12 +860,13 @@ if [ -n "$files" ]; then
     fi
 
     # SPECIFYING DYLIBS
-    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
+    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib')
 
     # DYLIB SELECTION
     for i in "${dylibs[@]}"; do
         if ! [ -e "${i%.*}.plist" ]; then
             inject+=( "$(basename "$i")" )
+            lib_dylibs+=( "$(basename "$i")" )
             rsync -a "$i" "$rpath"
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
         else
@@ -901,6 +902,7 @@ if [ -n "$files" ]; then
             rsync -a "$i" "$rpath"
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+            lib_dylibs+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
@@ -947,33 +949,6 @@ if [ -n "$files" ]; then
         Verbose "Re-Link Successful" "$tlnk Re-Links failed" -x
     fi
 
-    for i in "${!inject[@]}"; do
-        for l in "${linked[@]}"; do
-            if [ "${inject[i]}" = "$l" ]; then
-                unset "inject[i]"
-            fi
-        done
-    done
-
-    # INJECTING LIBRARIES
-    while read -r p; do exec_dylibs+=("$p"); done < <(otool -L "$executable" | cut -d ' ' -f1)
-
-    for i in "${inject[@]}"; do
-        for l in "${exec_dylibs[@]}"; do
-            if [[ "$l" =~ /"$i" ]]; then
-                dont_inject=1
-                break
-            fi
-        done
-
-        if [ -z "$dont_inject" ]; then 
-            insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &> /dev/null
-            Verbose "Injected $i" "Couldn't inject $i" -e
-        else
-            unset dont_inject
-        fi
-    done
-
     # INJECT HOOKING LIBRARY
     if [ -n "$inject" ]; then
         for hookinglibrary in "libsubstitute.dylib" "libsubstrate.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
@@ -1005,6 +980,35 @@ if [ -n "$files" ]; then
             Verbose "Successfully injected $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" -x
         fi
     fi
+    
+    for l in "${linked[@]}"; do
+        if [[ "${lib_dylibs[*]}" =~ $l ]]; then
+            for i in "${!inject[@]}"; do
+                if [ "$l" == "${inject[i]}" ]; then
+                    unset "inject[i]"
+                fi
+            done
+        fi
+    done
+
+    # INJECTING LIBRARIES
+    while read -r p; do exec_dylibs+=("$p"); done < <(otool -L "$executable" | cut -d ' ' -f1)
+
+    for i in "${inject[@]}"; do
+        for l in "${exec_dylibs[@]}"; do
+            if [[ "$l" =~ /"$i" ]]; then
+                dont_inject=1
+                break
+            fi
+        done
+
+        if [ -z "$dont_inject" ]; then 
+            insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &> /dev/null
+            Verbose "Injected $i" "Couldn't inject $i" -e
+        else
+            unset dont_inject
+        fi
+    done
 fi
 
 # REMOVING UISUPPORTEDDEVICES
