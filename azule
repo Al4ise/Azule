@@ -71,16 +71,16 @@ case "$os" in
             if [ "$2" = "fetch" ]; then
                 Verbose "Fetching $1..." -a
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" -e -r -i
+                Verbose "Fetched $1" "Couldn't fetch $1" 1 -e -r -i
                 Verbose "Extracting $1..." -a
                 imported_debs+=( "$(dpkg -f "tweak.deb" Package)" )
                 dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" -r -e -i
+                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" 2 -r -e -i
             else
                 Verbose "Extracting $(basename "$1")..." -a
                 imported_debs+=( "$(dpkg -f "$1" Package)" )
                 dpkg -x "$1" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -r -e -i
+                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 3 -r -e -i
             fi
         }
     ;;
@@ -110,18 +110,18 @@ case "$os" in
             if [ "$2" = "fetch" ]; then
                 Verbose "Fetching $1..." -a
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" -r -e "$TMP" -i
+                Verbose "Fetched $1" "Couldn't fetch $1" 1 -r -e "$TMP" -i
                 ar -x "tweak.deb"
                 status="$?"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e -r "$TMP" -i -x
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v -e -r "$TMP" -i -x
             else
                 ar -x "$1"
                 status="$?"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" -v -e -r "$TMP" -i -x
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v -e -r "$TMP" -i -x
             fi
             Verbose "Extracting $(basename "$1")..." -a
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" -r -e "$TMP" -i
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5 -r -e "$TMP" -i
             cd "$origin_dir" || exit
             unset origin_dir
             rm -rf "$TMP"
@@ -152,6 +152,7 @@ Verbose () {
         fi
     else
         echo "$2"
+        exit_code="$3"
     fi
 
     if [ -z "$announcement" ]; then
@@ -176,7 +177,10 @@ Verbose () {
         done
     else
         for p in "$@"; do
-            if [ "$p" == "-k" ]; then cleanup; fi
+            if [ "$p" == "-k" ]; then
+                exit_code="$2"
+                cleanup 
+            fi
         done
     fi
 }
@@ -214,13 +218,10 @@ cleanup () {
     rm -rf "$dir"
     rm -rf "$empty_dir"
     cd "$rootdir" || exit
-    if [ -z "$run_successful" ]; then
-        if [ -z "$ignore_errors" ]; then
-            exit 1
-        fi
-    else
-        exit 0
+    if [ -n "$ignore_errors" ]; then
+        exit_code=0
     fi
+    exit "$exit_code"
 }
 
 help () {
@@ -288,7 +289,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzkglv args; do
     # iOS ONLY
     if [[ "$args" == @(a|x|l|m|g|z|j) ]]; then
         if [ "$os" != "iOS" ]; then
-            Verbose "-$args is not supported on your platform" -a -k
+            Verbose "-$args is not supported on your platform" 6 -a -k
         fi
     fi
 
@@ -346,7 +347,7 @@ do true; done; fi
 
 if [ ! -e "$ipadir" ]; then
     if [ "$os" != "iOS" ]; then
-        Verbose "Invalid iPA" -a -k
+        Verbose "Invalid iPA" 7 -a -k
     else
         # CHECK IF APP IS ON THE APP STORE
         latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
@@ -363,7 +364,7 @@ if [ ! -e "$ipadir" ]; then
             done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
 
             if [ -z "$status" ]; then
-                Verbose "Invalid App" -a -k
+                Verbose "Invalid App" 8 -a -k
             fi
             ignore_outdated=2
         fi
@@ -527,14 +528,14 @@ fi
 # CREATING OUTPUT DIRECTORY
 mkdir -p "$(dirname "$output")"
 test -w "$(dirname "$output")"
-Verbose "iPA will be written to $output" "$output is an invalid output path" -v -e
+Verbose "iPA will be written to $output" "$output is an invalid output path" 9 -v -e
 
 # CREATING .TMP DIRECTORIES
 dir="$(mktemp -d)"
 
 tweakid="$RANDOM"
 mkdir -p "$dir/$tweakid/Tweak"
-Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tweak" -v -e
+Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tweak" 10 -v -e
 
 cd "$dir/$tweakid" || exit
 
@@ -695,7 +696,7 @@ fi
 if [[ -n "$run" && -z "$unzipped" ]]; then
     Verbose "Extracting iPA..." -a
     unzip -q "$ipadir" -d "$dir/$tweakid"
-    Verbose "IPA extracted" "Couldn't extract IPA" -e
+    Verbose "IPA extracted" "Couldn't extract IPA" 11 -e
 fi
 
 if [ -z "$bfipadir" ]; then
@@ -723,10 +724,10 @@ appname="$(basename Payload/*.app)"
 
 # GETTING APP EXECUTABLE
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
-Verbose "App executable is $executable" "Couldn't set app executable" -v -e
+Verbose "App executable is $executable" "Couldn't set app executable" 12 -v -e
 rpath="$(expand "$(otool -l "$executable" | grep RPATH -A2 | tail -1 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | sed "s|@executable_path|Payload/$appname|g" 
 )")"
-Verbose "App rpath is $executable" "Couldn't set app rpath" -v -e
+Verbose "App rpath is $executable" "Couldn't set app rpath" 13 -v -e
 
 # ENCRYPTION CHECK
 if [ -z "$ignore_encrypted" ]; then
@@ -734,7 +735,7 @@ if [ -z "$ignore_encrypted" ]; then
         CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
         if [ -n "$CFBundleExecutable" ] && [ -n "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
             if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
-                Verbose "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted" -a -k
+                Verbose "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted" 14 -a -k
             else
                 Verbose "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on" -a -v
             fi
@@ -763,17 +764,17 @@ if [ -n "$files" ]; then
                     
                     *.dylib)
                         rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" -v -e -i
+                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v -e -i
                     ;;
 
                     *.framework)
                         rsync -a "$(expand "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Moved $(basename "$(expand "$string")") to work directory" "Couldn't Move $(basename "$i") to work directory" -v -e -i
+                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v -e -i
                     ;;
 
                     *)
                         rsync -a "$(expand "$string")" Payload/"$appname"
-                        Verbose "Moved $(basename "$(expand "$string")") to app directory" "Couldn't Move $(basename "$i") to app directory" -e -i
+                        Verbose "Copied $(basename "$(expand "$string")") to app directory" "Couldn't Copy $(basename "$i") to app directory" 16 -e -i
                     ;;
                 esac
                 unset string
@@ -839,7 +840,7 @@ if [ -n "$files" ]; then
         for x in "${apt_packages[@]}"; do
             Verbose "Fetching $x" -a
             echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
-            Verbose "Fetched $x" "Couldn't Fetch $x" -e -i
+            Verbose "Fetched $x" "Couldn't Fetch $x" 17 -e -i
         done
 
         while read -r g; do
@@ -853,7 +854,7 @@ if [ -n "$files" ]; then
                 ExtractDEB "$i" fetch
             else
                 if [ -z "$ignore_injectable_errors" ]; then 
-                    Verbose "$i couldn't be found" -a -k
+                    Verbose "$i couldn't be found" 18 -a -k
                 fi
             fi
         done
@@ -868,7 +869,7 @@ if [ -n "$files" ]; then
             inject+=( "$(basename "$i")" )
             lib_dylibs+=( "$(basename "$i")" )
             rsync -a "$i" "$rpath"
-            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
+            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v -e
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
             idtype="$(ExtractPlistValue Filter "${i%.*}".plist key)"
@@ -880,7 +881,7 @@ if [ -n "$files" ]; then
                     if [[ "$identifier" =~ $ipabundleid ]]; then
                         inject+=( "$(basename "$i")" )
                         rsync -a "$i" "$rpath"
-                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
+                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v -e
                     fi
                 ;;
 
@@ -888,7 +889,7 @@ if [ -n "$files" ]; then
                     if [[ "$identifier" =~ $(basename "$executable") ]]; then
                         inject+=( "$(basename "$i")" )
                         rsync -a "$i" "$rpath"
-                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -v -e
+                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v -e
                     fi
                 ;;
                 
@@ -900,7 +901,7 @@ if [ -n "$files" ]; then
     while read -r i; do
         if [ -e "$i/Info.plist" ]; then
             rsync -a "$i" "$rpath"
-            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
+            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -e
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
             lib_dylibs+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
@@ -909,13 +910,13 @@ if [ -n "$files" ]; then
     # MOVING BUNDLES
     while read -r i; do
         rsync -a "$i" Payload/"$appname"/
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" -e
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -e
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
         ldid -r -M "$rpath/$i" &>/dev/null
-        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" -v -e 
+        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" 19 -v -e 
 
         while read -r p; do links+=("$p"); done < <(otool -L "$rpath/$i" | sort -u | cut -d ' ' -f1)
         for l in "${links[@]}"; do
@@ -941,12 +942,12 @@ if [ -n "$files" ]; then
     # VERBOSE
     status="$tid"
     if [ -n "$tid" ]; then
-        Verbose "ID Successful" "$tid file(s) failed to ID" -x
+        Verbose "ID Successful" "$tid file(s) failed to ID" 20 -e -x
     fi
 
     status="$tlnk"
     if [ -n "$tlnk" ]; then
-        Verbose "Re-Link Successful" "$tlnk Re-Links failed" -x
+        Verbose "Re-Link Successful" "$tlnk Re-Links failed" 21 -e -x
     fi
 
     # INJECT HOOKING LIBRARY
@@ -966,7 +967,7 @@ if [ -n "$files" ]; then
                             if [ "$os" == "iOS" ]; then
                                 rsync -a "/var/mobile/Azule/lib/$hl_file" "$rpath"
                             elif ! rsync -a "$AZULE/lib/$hl_file" "$rpath" &>/dev/null; then
-                                Verbose "$hl_file not downloaded, please run setup-azule." -a -k
+                                Verbose "$hl_file not downloaded, please run setup-azule." 22 -a -k
                             fi
                         fi
                         install_name_tool -change "$l" @rpath/"$hookinglibrary" "$rpath/$i" &>/dev/null
@@ -977,7 +978,7 @@ if [ -n "$files" ]; then
             done
         done
         if [ -n "$status" ]; then
-            Verbose "Successfully injected $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" -x
+            Verbose "Successfully injected $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" 23 -e -x
         fi
     fi
     
@@ -1004,7 +1005,7 @@ if [ -n "$files" ]; then
 
         if [ -z "$dont_inject" ]; then 
             insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &> /dev/null
-            Verbose "Injected $i" "Couldn't inject $i" -e
+            Verbose "Injected $i" "Couldn't inject $i" 24 -e
         else
             unset dont_inject
         fi
@@ -1064,11 +1065,13 @@ fi
 if [ -n "$run" ] || [ -n "$unzipped" ]; then
     Verbose "Generating iPA..." -a
     zip -rq "$output" Payload
+    status="$?"
 else
     mv "$ipadir" "$output"
+    status="$?"
 fi
-Verbose "Generated IPA at $output" "Couldn't generate IPA"
+Verbose "Generated IPA at $output" "Couldn't generate IPA" 25 -x 
 
-run_successful=1
+exit_code=0
 
 cleanup
