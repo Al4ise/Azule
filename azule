@@ -914,7 +914,7 @@ if [ -n "$files" ]; then
 
     # MOVING BUNDLES
     while read -r i; do
-        rsync -a "$i" "$rpath"
+        rsync -a "$i" "Payload/$appname/"
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -e
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
