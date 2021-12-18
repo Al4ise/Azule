@@ -185,6 +185,11 @@ Verbose () {
     fi
 }
 
+network_check () {
+    if ! curl -I google.com &>/dev/null; then
+        Verbose "No Connection to the Internet" 26 -a -k
+    fi
+}
 expand () {
     origin_dir="$PWD"
     cd "$empty_dir" || exit
@@ -557,7 +562,8 @@ if [ -n "$drun" ]; then
 
         if [ -n "$currentv" ]; then ignore_outdated+=1; fi
         if [[ "$latestv" != "$currentv" && "$ignore_outdated" != "11" ]] || [ -n "$force_update" ]; then
-
+        
+            network_check
             # VARIABLE CHECK
             if [ -z "$appleid" ]; then while
                 printf 'Apple ID: '
@@ -572,8 +578,9 @@ if [ -n "$drun" ]; then
             do true; done; fi
 
             if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"; then exit 1; fi
-        
-            appinst "$dir/$tweakid"/*.ipa
+
+            Verbose "Installing "$(basename "$dir/$tweakid"/*.ipa)" ..." -a
+            appinst "$dir/$tweakid"/*.ipa &>/dev/null
         fi
     fi
 
@@ -726,8 +733,8 @@ appname="$(basename Payload/*.app)"
 # GETTING APP EXECUTABLE
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
 Verbose "App executable is $executable" "Couldn't set app executable" 12 -v -e
-rpath="$(expand "$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g" 
-)")"
+rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | tail -1 | grep "@executable_path*" | sed "s|@executable_path|Payload/$appname|g" 
+)"
 Verbose "App rpath is $rpath" "Couldn't set app rpath" 13 -v -e
 
 if ! [ -d "$rpath" ]; then
@@ -794,6 +801,7 @@ if [ -n "$files" ]; then
     
     # FETCHING DEBS
     if [ "$os" == "iOS" ] && [ -n "$apt" ]; then
+        network_check
             
         # SET ROOT PASSWORD
         if [ -z "$root_password" ]; then
