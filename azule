@@ -498,7 +498,8 @@ fi
 if ! [[ -n "$run" || -n "$drun" ]]; then
     echo "Insufficient Arguements"
     echo "Run "azule -h" for usage instructions"
-    exit 1
+    exit_code=27
+    exit
 fi
 
 # SETTING OUTPUT DIRECTORY AND NAME
@@ -577,7 +578,7 @@ if [ -n "$drun" ]; then
                 [ -z "$appleid_password" ] && echo "No Password Provided"
             do true; done; fi
 
-            if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"; then exit 1; fi
+            if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"; then exit_code=28 && exit; fi
 
             Verbose "Installing "$(basename "$dir/$tweakid"/*.ipa)" ..." -a
             appinst "$dir/$tweakid"/*.ipa &>/dev/null
@@ -733,7 +734,7 @@ appname="$(basename Payload/*.app)"
 # GETTING APP EXECUTABLE
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
 Verbose "App executable is $executable" "Couldn't set app executable" 12 -v -e
-rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | tail -1 | grep "@executable_path*" | sed "s|@executable_path|Payload/$appname|g" 
+rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g" 
 )"
 Verbose "App rpath is $rpath" "Couldn't set app rpath" 13 -v -e
 
@@ -1086,5 +1087,3 @@ fi
 Verbose "Generated IPA at $output" "Couldn't generate IPA" 25 -x 
 
 exit_code=0
-
-cleanup
