@@ -98,7 +98,7 @@ function setup-azule() {
         TMP="$(mktemp -d)"
         cd "$TMP" || exit 
         echo "Downloading Substitute..."
-        curl -sS https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.0_iphoneos-arm.deb -o substitute.deb
+        curl -sS https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
         ar -x "substitute.deb"
         tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
         mv libsubstitute.dylib "$AZULE/lib/libsubstitute.dylib"
