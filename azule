@@ -932,8 +932,7 @@ if [ -n "$files" ]; then
         ldid -r -M "$rpath/$i" &>/dev/null
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" 19 -v -e 
 
-        while read -r p; do links+=("$p"); done < <(otool -L "$rpath/$i" | sort -u | cut -d ' ' -f1)
-        for l in "${links[@]}"; do
+        for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
             for x in "${inject[@]}"; do
                 if [[ "$l" =~ $x ]]; then
                     if [[ "$l" =~ $i ]]; then
@@ -968,8 +967,7 @@ if [ -n "$files" ]; then
     if [ -n "$inject" ]; then
         for hookinglibrary in "libsubstitute.dylib" "libsubstrate.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
             for i in "${inject[@]}"; do
-                while read -r q; do links+=("$q"); done < <(otool -L "$rpath/$i" | sort -u | cut -d ' ' -f1)
-                for l in "${links[@]}"; do
+                for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
                         if [ ! -e "$rpath/$hookinglibrary" ]; then
                             if [[ "$hookinglibrary" =~ .framework ]]; then
@@ -992,7 +990,7 @@ if [ -n "$files" ]; then
             done
         done
         if [ -n "$status" ]; then
-            Verbose "Successfully injected $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" 23 -e -x
+            Verbose "Successfully linked $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" 23 -e -x
         fi
     fi
     
@@ -1000,6 +998,7 @@ if [ -n "$files" ]; then
         if [[ "${lib_dylibs[*]}" =~ $l ]]; then
             for i in "${!inject[@]}"; do
                 if [ "$l" == "${inject[i]}" ]; then
+                    echo "Unsetting ${inject[i]}"
                     unset "inject[i]"
                 fi
             done
@@ -1020,9 +1019,8 @@ if [ -n "$files" ]; then
         if [ -z "$dont_inject" ]; then 
             insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &> /dev/null
             Verbose "Injected $i" "Couldn't inject $i" 24 -e
-        else
-            unset dont_inject
         fi
+            unset dont_inject
     done
 fi
 
