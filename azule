@@ -606,7 +606,7 @@ if [ -n "$drun" ]; then
 
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-            if [ -n "$CFBundleExecutable" ] && [ -e "$(dirname "$i")/$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
+            if [ -n "$CFBundleExecutable" ] && [ -e "$(dirname "$i")/$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ] && ! [[ "$(dirname "$i")" =~ Watch.app ]]; then
                 if [ -z "$status" ]; then
                     Verbose "Decrypting App..." -a
                 fi
