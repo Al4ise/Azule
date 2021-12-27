@@ -73,12 +73,10 @@ case "$os" in
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched $1" "Couldn't fetch $1" 1 -e -r -i
                 Verbose "Extracting $1..." -a
-                imported_debs+=( "$(dpkg -f "tweak.deb" Package)" )
                 dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
                 Verbose "Extracted $1.deb" "Couldn't extract $1.deb" 2 -r -e -i
             else
                 Verbose "Extracting $(basename "$1")..." -a
-                imported_debs+=( "$(dpkg -f "$1" Package)" )
                 dpkg -x "$1" "$dir/$tweakid/Tweak"
                 Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 3 -r -e -i
             fi
@@ -552,17 +550,20 @@ cd "$dir/$tweakid" || exit
 # DECRYPTION
 if [ -n "$drun" ]; then
 
+    # GET INFO.PLIST
+    while read -r i; do
+        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+            bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
+            Verbose "Main Info.plist is $bfplist" "Couldn't Set Info.plist" -v -e
+            break
+        fi
+    done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+
     # INSTALL APP UPDATES
     if [ "$ignore_outdated" != "2" ]; then
 
         # GET CURRENT VERSION
-        while read -r i; do
-            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
-                currentv="$(ExtractPlistValue CFBundleShortVersionString "$bfplist")"
-                break
-            fi
-        done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+        currentv="$(ExtractPlistValue CFBundleShortVersionString "$bfplist")"
 
         if [ -n "$currentv" ]; then ignore_outdated+=1; fi
         if [[ "$latestv" != "$currentv" && "$ignore_outdated" != "11" ]] || [ -n "$force_update" ]; then
@@ -589,22 +590,14 @@ if [ -n "$drun" ]; then
         fi
     fi
 
-    while read -r i; do
-        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-            bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
-            bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
-            break
-        fi
-    done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+    # SET MAIN BINARY
+    bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
+    Verbose "BFBinary is $bfbinary" "Couldn't Set Binary" -v -e
 
     if [ -n "$flexdecrypt" ]; then
 
         # FLEXDECRYPT
-
-        Verbose "Preparing App..." -a
         mkdir -p Payload
-        rsync -a "$(dirname "$bfplist")" Payload
-        unzipped=1
     
         # REMOVING PLUGINS
         if [ -n "$remove_extensions" ]; then
@@ -614,25 +607,25 @@ if [ -n "$drun" ]; then
             remove_extensions=2
         fi
 
-        Verbose "Removing Watch App..." -a
-        find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
-        Verbose "Removed Watch App" "Couldn't Remove Watch App"
-        remove_watchapp=2
+        appname="$(basename "$(dirname "$bfplist")")"
 
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-            if [ -n "$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
+            if [ -n "$CFBundleExecutable" ] && [ -e "$(dirname "$i")/$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
                 if [ -z "$status" ]; then
                     Verbose "Decrypting App..." -a
                 fi
-
-                flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "$(dirname "$i")/$CFBundleExecutable" &>/dev/null
+                mkdir -p "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")"
+                flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")/$CFBundleExecutable" &>/dev/null
                 Verbose "Decrypted $CFBundleExecutable" "Couldn't Decrypt $CFBundleExecutable" -v
                 status=0
             fi
-        done < <(find Payload/*.app -name "Info.plist")
+        done < <(find "$(dirname "$bfplist")" -name "Info.plist")
     
+        rsync --ignore-existing -a "$(dirname "$bfplist")" Payload
         Verbose "Decrypted App" "App Was Not Encrypted" -x 
+
+        unzipped=1
     else
     
         # BFDECRYPT
@@ -683,7 +676,7 @@ if [ -n "$drun" ]; then
             while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
 
             # KILL APP
-            PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
+            PID="$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )"
             kill -9 "$PID" &>/dev/null
 
             # SET NEW IPADIR
@@ -724,14 +717,14 @@ if [ "$remove_extensions" == "1" ]; then
     Verbose "Removing Extensions..." -a
     while read -r i; do
         rm -rf "$i"
-    done < <(find "$dir/$tweakid" -mindepth 3 -type d -name PlugIns)
+    done < <(find "$dir/$tweakid/Payload" -mindepth 3 -type d -name PlugIns)
     Verbose "Removed Extensions" "Couldn't Remove Extensions"
 fi
 
 # REMOVING WATCH APP
-if [ "$remove_watchapp" == "1" ] || [ -n "$bfipadir" ]; then
+if [ "$remove_watchapp" == "1" ] || [ -n "$bfipadir" ] || [ -n "$flexdecrypt" ]; then
     Verbose "Removing Watch App..." -a
-    find "$dir/$tweakid" -mindepth 3 -maxdepth 3 -type d -name Watch -exec rm -rf "{}" \;
+    rm -rf "$(find "$dir/$tweakid/Payload" -mindepth 2 -maxdepth 4 -type d -name Watch.app)"
     Verbose "Removed Watch App" "Couldn't Remove Watch App"
 fi
 
