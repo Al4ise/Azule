@@ -139,17 +139,16 @@ Verbose () {
         if [ "$p" == "-a" ]; then tv=0 && announcement=1; fi
         if [ "$p" == "-v" ] && [ -z "$verbose" ]; then mute_verbose=1; fi
         if [ "$p" == "-x" ]; then tv="$status" && unset status; fi
-        if [ "$p" == "-i" ]; then injectable=1; fi
     done
     
     if [ -z "$tv" ]; then tv=0; fi
 
     if [ "$tv" == 0 ]; then
         if [ -z "$mute_verbose" ]; then
-            echo "$1"
+            echo "[*] $1"
         fi
     else
-        echo "$2"
+        echo "==> $2"
         exit_code="$3"
     fi
 
@@ -160,13 +159,11 @@ Verbose () {
             fi
         done
 
-        if ! [[ -n "$ignore_injectable_errors" && -n "$injectable" ]]; then
-            for p in "$@"; do
-                if [ "$tv" != 0 ]; then 
-                    if [ "$p" == "-e" ]; then cleanup; fi
-                fi
-            done
-        fi
+        for p in "$@"; do
+            if [ "$tv" != 0 ]; then 
+                if [ "$p" == "-e" ]; then cleanup; fi
+            fi
+        done
 
         for p in "$@"; do
             if [ "$tv" != 0 ]; then 
@@ -252,7 +249,7 @@ help () {
     echo "  -e                           Removes App Extensions"
     echo "  -w                           Removes Watch App"
     echo "  -r                           Skip Encryption Check"
-    echo "  -k                           Ignore unfound files to inject"
+    echo "  -k                           Substrate Compatibility Mode (Experimental)"
     echo "  -q                           Ignore errors"
             
     if [ "$os" == "iOS" ]; then
@@ -309,7 +306,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzkglv args; do
         i) ipadir="$(expand "${tmp[*]}" -f)" ;;
         o) outdir="${tmp[*]}" ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
-        f) files=( ${tmp[@]} ) && run=1 ;;
+        f) files+=( ${tmp[@]} ) && run=1 ;;
         a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
         x) appleid="${tmp[0]}" && unset "tmp[0]" && appleid_password="${tmp[*]}" ;;
 
@@ -321,7 +318,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzkglv args; do
         S) fakesign=1 && run=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
-        k) ignore_injectable_errors=1 ;;
+        k) inject_substrate=1 ;;
         q) ignore_errors=1 ;;
 
         # iOS ONLY SWITCHES
@@ -543,7 +540,7 @@ dir="$(mktemp -d)"
 
 tweakid="$RANDOM"
 mkdir -p "$dir/$tweakid/Tweak"
-Verbose "$dir/$tweakid/Tweak has been created" "Couldn't create $dir/$tweakid/Tweak" 10 -v -e
+Verbose "Temporary Directory $dir/$tweakid/Tweak has been created" "Couldn't create Temporary Directory" 10 -v -e
 
 cd "$dir/$tweakid" || exit
 
@@ -606,7 +603,7 @@ if [ -n "$drun" ]; then
 
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-            if [ -n "$CFBundleExecutable" ] && [ -e "$(dirname "$i")/$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ] && ! [[ "$(dirname "$i")" =~ Watch.app ]]; then
+            if [ -n "$CFBundleExecutable" ] && [ -e "$(dirname "$i")/$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1' && ! [[ "$(dirname "$i")" =~ .appex ]]; then
                 if [ -z "$status" ]; then
                     Verbose "Decrypting App..." -a
                 fi
@@ -629,7 +626,7 @@ if [ -n "$drun" ]; then
 
         while read -r i; do
             CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-            if [ -n "$CFBundleExecutable" ] && [ "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
+            if [ -n "$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1'; then
                 if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$bfbinary" ]]; then
                     bfdecrypt=1
                     break
@@ -720,9 +717,20 @@ fi
 
 # REMOVING WATCH APP
 if [ "$remove_watchapp" == "1" ] || [ -n "$bfipadir" ] || [ -n "$flexdecrypt" ]; then
-    Verbose "Removing Watch App..." -a
-    rm -rf "$(find "$dir/$tweakid/Payload" -mindepth 2 -maxdepth 4 -type d -name Watch.app)"
-    Verbose "Removed Watch App" "Couldn't Remove Watch App"
+    while read -r i; do
+        DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
+        if [ "$DTPlatformName" == "watchos" ] ; then
+            if [ -z "$status" ]; then
+                Verbose "Removing Watch App..." -a
+            fi
+            rm -rf "$(dirname "$i")"
+            status=$(( status + $? ))
+        fi
+    done < <(find "$dir/$tweakid/Payload" -name "Info.plist")
+
+    if [ -n "$status" ]; then
+         Verbose "Removed Watch App" "Couldn't Remove Watch App" -x
+    fi
 fi
 
 # GETTING APP NAME
@@ -731,7 +739,7 @@ appname="$(basename Payload/*.app)"
 # GETTING APP EXECUTABLE
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
 Verbose "App executable is $executable" "Couldn't set app executable" 12 -v -e
-rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g" 
+rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g" 
 )"
 Verbose "App rpath is $rpath" "Couldn't set app rpath" 13 -v -e
 
@@ -743,11 +751,11 @@ fi
 if [ -z "$ignore_encrypted" ]; then
     while read -r i; do
         CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-        if [ -n "$CFBundleExecutable" ] && [ -n "$(otool -l "$(dirname "$i")/$CFBundleExecutable" | grep "cryptid 1")" ]; then
+        if [ -n "$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1'; then
             if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
                 Verbose "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted" 14 -a -k
             else
-                Verbose "$(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on" -a -v
+                Verbose "Warning: $(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on" -a -v
             fi
         fi
     done < <(find Payload/"$appname" -name "Info.plist")
@@ -765,7 +773,7 @@ if [ -n "$files" ]; then
             string+=" ${files[x]}"
             if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
 
-                Verbose "$(expand "$string") will be imported" -a -v
+                Verbose "$(basename "$string") will be imported" -a -v
 
                 case "$(expand "$string")" in
                     *.deb) 
@@ -864,9 +872,7 @@ if [ -n "$files" ]; then
             if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
                 ExtractDEB "$i" fetch
             else
-                if [ -z "$ignore_injectable_errors" ]; then 
-                    Verbose "$i couldn't be found" 18 -a -k
-                fi
+                Verbose "$i couldn't be found" 18 -a -k
             fi
         done
     fi
@@ -908,6 +914,15 @@ if [ -n "$files" ]; then
         fi
     done
 
+    # SUBSTRATE COMPATIBILITY
+    if [ -n "$inject_substrate" ]; then
+        if [ "$os" == "iOS" ]; then
+            rsync -a "/var/mobile/Azule/lib/CydiaSubstrate.framework" "$dir/$tweakid/Tweak" &>/dev/null
+        elif ! rsync -a "$AZULE/lib/CydiaSubstrate.framework" "$dir/$tweakid/Tweak" &>/dev/null; then
+            Verbose "CydiaSubstrate.framework not downloaded, please run setup-azule." 22 -a -k
+        fi
+    fi
+
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
         if [ -e "$i/Info.plist" ]; then
@@ -926,7 +941,7 @@ if [ -n "$files" ]; then
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
-        ldid -r -M "$rpath/$i" &>/dev/null
+        ldid -r -M "$rpath/$i"
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" 19 -v -e 
 
         for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
@@ -962,7 +977,7 @@ if [ -n "$files" ]; then
 
     # INJECT HOOKING LIBRARY
     if [ -n "$inject" ]; then
-        for hookinglibrary in "libsubstitute.dylib" "libsubstrate.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
+        for hookinglibrary in "libsubstitute.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
             for i in "${inject[@]}"; do
                 for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
                     if [[ "$l" =~ $hookinglibrary ]]; then

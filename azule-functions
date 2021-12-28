@@ -57,14 +57,23 @@ function setup-azule() {
 
         Linux)
             # GET TOOLCHAIN
+<<<<<<< HEAD
+            mkdir -p "$AZULE"/toolchain
+            if [ ! "$(ls -A "$AZULE"/toolchain)" ]; then
+=======
             mkdir -p "$AZULE/toolchain"
             if [ ! "$(ls -A "$AZULE/toolchain")" ]; then
+>>>>>>> 59bfde4fa0674b2739b4498e609c79fd12122269
                 echo "Fetching toolchain..."
                 TMP=$(mktemp -d)
                 cd "$TMP" || exit
                 curl -LO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
                 tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
+<<<<<<< HEAD
+                rsync --remove-source-files -a "$TMP"/ios-arm64e-clang-toolchain/* "$AZULE"/toolchain
+=======
                 rsync --remove-source-files -a "$TMP/ios-arm64e-clang-toolchain/*" "$AZULE/toolchain"
+>>>>>>> 59bfde4fa0674b2739b4498e609c79fd12122269
                 cd "$AZULE" || exit
                 rm -rf "$TMP"
             fi
@@ -74,7 +83,7 @@ function setup-azule() {
         ;;
     esac
 
-    if [ ! -d "$AZULE/lib/CydiaSubstrate.framework" ] || [ ! -e "$AZULE/lib/libsubstrate.dylib" ]; then
+    if [ ! -d "$AZULE/lib/CydiaSubstrate.framework" ]; then
         mkdir -p "$AZULE/lib"
         echo "Downloading CydiaSubstrate..."
         TMP=$(mktemp -d)
@@ -90,7 +99,11 @@ function setup-azule() {
         mv CydiaSubstrate.framework "$AZULE"/lib/CydiaSubstrate.framework
         cd || exit
         rm -rf "$TMP"
+<<<<<<< HEAD
+        plutil -convert binary1 "$AZULE"/lib/CydiaSubstrate.framework/Info.plist
+=======
         plutil -convert binary1 "$AZULE/lib/CydiaSubstrate.framework/Info.plist"
+>>>>>>> 59bfde4fa0674b2739b4498e609c79fd12122269
         echo "Downloaded CydiaSubstrate.framework"
     fi
 
