@@ -85,7 +85,8 @@ function setup-azule() {
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         rsync -a "$TMP"/libsubstrate.dylib "$AZULE/lib/libsubstrate.dylib"
         echo "Downloaded libsubstrate.dylib"
-        mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+        mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
+        mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         mv CydiaSubstrate.framework "$AZULE"/lib/CydiaSubstrate.framework
         cd || exit
         rm -rf "$TMP"
