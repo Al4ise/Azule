@@ -8,7 +8,7 @@ PATH="$AZULE:$PATH"
 
 function update-azule() {
     currentdir="$PWD"
-    cd $AZULE || exit
+    cd "$AZULE" || exit
     while getopts ":fhr" args; do
         case "$args" in
             f) git reset --hard HEAD >> /dev/null ;;
@@ -37,7 +37,7 @@ function update-azule() {
 
 function setup-azule() {
     currentdir="$PWD"
-    cd $AZULE || exit
+    cd "$AZULE" || exit
     case $(uname) in
         Darwin)
             if [[ "$(uname -m)" == arm64 || "$(uname -m)" == x86_64 ]]; then
@@ -57,15 +57,15 @@ function setup-azule() {
 
         Linux)
             # GET TOOLCHAIN
-            mkdir -p $AZULE/toolchain
-            if [ ! "$(ls -A $AZULE/toolchain)" ]; then
+            mkdir -p "$AZULE/toolchain"
+            if [ ! "$(ls -A "$AZULE/toolchain")" ]; then
                 echo "Fetching toolchain..."
                 TMP=$(mktemp -d)
                 cd "$TMP" || exit
                 curl -LO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
                 tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
-                rsync --remove-source-files -a "$TMP"/ios-arm64e-clang-toolchain/* $AZULE/toolchain
-                cd $AZULE || exit
+                rsync --remove-source-files -a "$TMP/ios-arm64e-clang-toolchain/*" "$AZULE/toolchain"
+                cd "$AZULE" || exit
                 rm -rf "$TMP"
             fi
             # Add tools to $PATH
@@ -85,12 +85,11 @@ function setup-azule() {
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         rsync -a "$TMP"/libsubstrate.dylib "$AZULE/lib/libsubstrate.dylib"
         echo "Downloaded libsubstrate.dylib"
-        mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
-        mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+        mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         mv CydiaSubstrate.framework "$AZULE"/lib/CydiaSubstrate.framework
         cd || exit
         rm -rf "$TMP"
-        plutil -convert binary1 $AZULE/lib/CydiaSubstrate.framework/Info.plist
+        plutil -convert binary1 "$AZULE/lib/CydiaSubstrate.framework/Info.plist"
         echo "Downloaded CydiaSubstrate.framework"
     fi
 
