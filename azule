@@ -941,7 +941,7 @@ if [ -n "$files" ]; then
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
-        ldid -r -M "$rpath/$i"
+        ldid -r -M "$rpath/$i" &>/dev/null
         Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" 19 -v -e 
 
         for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
