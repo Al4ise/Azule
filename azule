@@ -148,7 +148,7 @@ Verbose () {
             echo "[*] $1"
         fi
     else
-        echo "==> $2"
+        echo "[*] $2"
         exit_code="$3"
     fi
 
@@ -212,9 +212,6 @@ expand () {
 }
 
 cleanup () {
-    if [[ "$os" == "iOS" && -e "$dir/$tweakid/bfbackup.plist" ]]; then
-        mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
-    fi
     rm -rf "$dir"
     rm -rf "$empty_dir"
     cd "$rootdir" || exit
@@ -255,7 +252,6 @@ help () {
     if [ "$os" == "iOS" ]; then
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
         echo "  -a [Root Password]           Use APT instead of Parcility (Leave Blank for Default Password)"
-        echo "  -g                           Use Flexdecrypt instead of bfdecrypt for decryption"
         echo "  -m                           Enforce Updating Apps Before Decrypting"
         echo "  -l                           Don't Update Outdated Apps"
         echo "  -z                           Don't Update APT Sources (Used With -a)"
@@ -264,13 +260,12 @@ help () {
             
     echo
     echo "Examples:"
-    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
+    echo "  azule -n Foo -i com.example.foo -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
     echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
     echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
     echo
     echo "  -h                           Print this help menu"
     echo
-    exit_code=0
     exit
 }
 
@@ -279,7 +274,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzkglv args; do
+while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -291,7 +286,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzkglv args; do
     fi
 
     # iOS ONLY
-    if [[ "$args" == @(a|x|l|m|g|z|j) ]]; then
+    if [[ "$args" == @(a|x|l|m|z|j) ]]; then
         if [ "$os" != "iOS" ]; then
             Verbose "-$args is not supported on your platform" 6 -a -k
         fi
@@ -325,7 +320,6 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzkglv args; do
         j) no_recurse=1 ;;
         l) ignore_outdated=1 ;;
         m) force_update=1 ;;
-        g) flexdecrypt=1 ;;
         z) no_apt_update=1 ;;
         
         h) help ;;
@@ -347,7 +341,6 @@ if [ -z "$ipadir" ]; then while
     ipadir="$(expand "$tmp")"
     [ -z "$ipadir" ] && echo "No iPA Specified"
 do true; done; fi
-
 
 if [ ! -e "$ipadir" ]; then
     if [ "$os" != "iOS" ]; then
@@ -385,21 +378,16 @@ if [[ -z "$run" && -z "$drun" ]]; then
     "Change App Version"
     "Change BundleID"
     "Remove UISupportedDevices"
-    "Fakesign iPA"
     "Remove App Extensions"
     "Remove Watch App"
     "Run With Verbose Mode"
     "Set Custom Output Name"
-    "Skip Encryption Check"
     )
 
     if [ "$os" == "iOS" ]; then
         arguements+=(
         "Do Not Update Outdated Apps"
         "Force Update Apps"
-        "Decrypt Apps through Flexdecrypt"
-        "Use APT instead of Parcility"
-        "Don't Update APT Sources"
         )
     fi
 
@@ -407,11 +395,11 @@ if [[ -z "$run" && -z "$drun" ]]; then
     select i in "${arguements[@]}"; do
         case "$i" in
             "Inject Tweaks")
-                if [ -z "$files" ]; then while
+                if [ -z "${files[*]}" ]; then while
                     printf 'Files or Tweak IDs: '
                     read -r tmp
                     files=( $tmp )
-                    [ -z "$files" ] && echo "No Files Provided"
+                    [ -z "${files[*]}" ] && echo "No Files Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -451,41 +439,12 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 run=1
             ;;
 
-            "Remove UISupportedDevices")
-                remove_uisd=1
-                run=1
-            ;;
-
-            "Use APT instead of Parcility")
-                apt=1
-                if [ -z "$root_password" ]; then
-                    printf 'Root Password (Leave Empty for Default): '
-                    read -r -s tmp
-                    root_password="$tmp"
-                fi
-            ;;
-
-            "Fakesign iPA")
-                fakesign=1
-                run=1
-            ;;
-
-            "Skip Encryption Check") ignore_encrypted=1 ;;
+            "Remove UISupportedDevices") remove_uisd=1 && run=1 ;;
             "Do Not Update Outdated Apps") ignore_outdated=1 ;;
-            "Don't Update APT Sources") no_apt_update=1 ;;
             "Force Update Apps") force_update=1 ;;
-            "Decrypt Apps through Flexdecrypt") flexdecrypt=1 ;;
             "Run With Verbose Mode") verbose="-v" ;;
-
-            "Remove Watch App")
-                remove_watchapp=1
-                run=1
-            ;;
-
-            "Remove App Extensions")
-                remove_extensions=1
-                run=1
-            ;;
+            "Remove Watch App") remove_watchapp=1 && run=1 ;;
+            "Remove App Extensions") remove_extensions=1 && run=1 ;;
 
             "Done") break ;;
         esac
@@ -494,9 +453,8 @@ fi
 
 # VARIABLE CHECK
 if ! [[ -n "$run" || -n "$drun" ]]; then
-    echo "Insufficient Arguements"
-    echo "Run "azule -h" for usage instructions"
-    exit_code=27
+    Verbose "Insufficient Arguements" -a
+    Verbose "Run "azule -h" for usage instructions" 27 -a -e
     exit
 fi
 
@@ -581,7 +539,7 @@ if [ -n "$drun" ]; then
 
             if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"; then exit_code=28 && exit; fi
 
-            Verbose "Installing "$(basename "$dir/$tweakid"/*.ipa)" ..." -a
+            Verbose "Installing $(basename "$dir/$tweakid"/*.ipa) ..." -a
             appinst "$dir/$tweakid"/*.ipa &>/dev/null
 
             # GET INFO.PLIST
@@ -593,8 +551,8 @@ if [ -n "$drun" ]; then
             done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
         fi
     fi
-
-    if [ -n "$flexdecrypt" ]; then
+        
+    if [ -n "$bfplist" ]; then
 
         # FLEXDECRYPT
         mkdir -p Payload
@@ -615,84 +573,9 @@ if [ -n "$drun" ]; then
         done < <(find "$(dirname "$bfplist")" -name "Info.plist")
     
         rsync --ignore-existing -a "$(dirname "$bfplist")" Payload
-        Verbose "Decrypted App" "App Was Not Encrypted" -x 
-
+        Verbose "Finished Decryption" "App Was Not Encrypted" -x 
         unzipped=1
-    else
-    
-        # BFDECRYPT
-        bfbinary="$(dirname "$bfplist")/$(ExtractPlistValue CFBundleExecutable "$bfplist")"
-        Verbose "BFBinary is $bfbinary" "Couldn't Set Binary" -v -e
-
-        while read -r i; do
-            CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-            if [ -n "$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1'; then
-                if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$bfbinary" ]]; then
-                    bfdecrypt=1
-                    break
-                fi
-            fi
-        done < <(find "$(dirname "$bfplist")" -name "Info.plist")
-
-        if [ -n "$bfdecrypt" ]; then
-
-            while read -r i; do
-                if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                    bfipadir="$(dirname "$i")/Documents/decrypted-app.ipa"
-                    break
-                fi
-            done < <(find /var/mobile/Containers/Data/Application -mindepth 2 -maxdepth 2 -name .com.apple.mobile_container_manager.metadata.plist)
-
-            # PRE CLEANUP
-            find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa -exec rm -rf "{}" \; &>/dev/null
-
-            # BFDECRYPT SETUP
-            if [ ! -f /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist ]; then
-                echo -n > /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
-            fi
-            if ! [[ "$(ExtractPlistValue selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist key)" =~ $ipadir ]]; then
-                cp /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist "$dir/$tweakid/bfbackup.plist"
-                plutil -key selectedApplications -array /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
-                plutil -value "$ipadir" -arrayadd -key selectedApplications /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist >/dev/null
-            fi
-
-            # KILL APP
-            PID=$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )
-            if [ -n "$PID" ]; then
-                kill -9 "$PID"
-            fi
-
-            # LAUNCH APP
-            open "$ipadir"
-
-            # WAIT FOR IPA
-            until [ -e "$bfipadir" ]; do :; done
-            while [ -d "$(dirname "$bfipadir")/ipa" ]; do :; done
-
-            # KILL APP
-            PID="$(ps awwwx|grep "$bfbinary"|grep container|grep '.app'|grep -v grep|sed 's/^\ *//g'|cut -f1 -d\ )"
-            kill -9 "$PID" &>/dev/null
-
-            # SET NEW IPADIR
-            ipadir="$bfipadir"
-
-            # CLEANUP
-            if [ -e "$dir/$tweakid/bfbackup.plist" ]; then
-                mv "$dir/$tweakid/bfbackup.plist" /var/mobile/Library/Preferences/com.level3tjg.bfdecrypt.plist
-            fi
-        else
-            mkdir -p Payload
-            rsync -a "$(dirname "$bfplist")" Payload
-            unzipped=1
-        fi
     fi
-fi
-
-# VERBOSE
-if [[ -n "$unzipped" || -n "$bfipadir" ]]; then
-    Verbose "Decrypted $ipadir" -a -v
-else
-    Verbose "Path to iPA is $ipadir" -a -v
 fi
 
 # EXTRACTING IPA
@@ -702,21 +585,18 @@ if [[ -n "$run" && -z "$unzipped" ]]; then
     Verbose "IPA extracted" "Couldn't extract IPA" 11 -e
 fi
 
-if [ -z "$bfipadir" ]; then
-    rm -rf "$bfipadir"
-fi
-
 # REMOVING PLUGINS
 if [ "$remove_extensions" == "1" ]; then
     Verbose "Removing Extensions..." -a
     while read -r i; do
         rm -rf "$i"
-    done < <(find "$dir/$tweakid/Payload" -mindepth 3 -type d -name PlugIns)
-    Verbose "Removed Extensions" "Couldn't Remove Extensions"
+        Verbose "Removed Extensions" "Couldn't Remove Extensions"
+        break
+    done < <(find "$dir/$tweakid/Payload" -mindepth 2 -maxdepth 2 -type d -name PlugIns)
 fi
 
 # REMOVING WATCH APP
-if [ "$remove_watchapp" == "1" ] || [ -n "$bfipadir" ] || [ -n "$flexdecrypt" ]; then
+if [ "$remove_watchapp" == "1" ] || [ -n "$unzipped" ]; then
     while read -r i; do
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
         if [ "$DTPlatformName" == "watchos" ] ; then
@@ -738,14 +618,12 @@ appname="$(basename Payload/*.app)"
 
 # GETTING APP EXECUTABLE
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
-Verbose "App executable is $executable" "Couldn't set app executable" 12 -v -e
+Verbose "App executable is $(echo "$executable" | sed "s|^.*.app/|@executable_path/|")" "Couldn't set app executable" 12 -v -e
 rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g" 
 )"
-Verbose "App rpath is $rpath" "Couldn't set app rpath" 13 -v -e
+Verbose "App rpath is $(echo "$rpath" | sed "s|^.*.app/|@executable_path/|")" "Couldn't set app rpath" 13 -v -e
 
-if ! [ -d "$rpath" ]; then
-    mkdir -p "$rpath"
-fi
+mkdir -p "$rpath"
 
 # ENCRYPTION CHECK
 if [ -z "$ignore_encrypted" ]; then
@@ -754,8 +632,6 @@ if [ -z "$ignore_encrypted" ]; then
         if [ -n "$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1'; then
             if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
                 Verbose "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted" 14 -a -k
-            else
-                Verbose "Warning: $(dirname "$i")/$CFBundleExecutable is encrypted. This may cause problems later on" -a -v
             fi
         fi
     done < <(find Payload/"$appname" -name "Info.plist")
@@ -815,9 +691,9 @@ if [ -n "$files" ]; then
         fi
 
         if [ -z "$no_apt_update" ]; then
-            Verbose "Updating Sources..." -a
+            Verbose "Refreshing Sources..." -a
             echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
-            Verbose "Successfully Refreshed Sources" "Couldn't Refresh Sources"
+            Verbose "Refreshed Sources" "Couldn't Refresh Sources"
         fi
 
         while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
@@ -976,7 +852,7 @@ if [ -n "$files" ]; then
     fi
 
     # INJECT HOOKING LIBRARY
-    if [ -n "$inject" ]; then
+    if [ -n "${inject[*]}" ]; then
         for hookinglibrary in "libsubstitute.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
             for i in "${inject[@]}"; do
                 for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
@@ -1002,7 +878,7 @@ if [ -n "$files" ]; then
             done
         done
         if [ -n "$status" ]; then
-            Verbose "Successfully linked $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" 23 -e -x
+            Verbose "Linked $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" 23 -e -x
         fi
     fi
     
@@ -1042,8 +918,6 @@ if [ -n "$remove_uisd" ]; then
     if [ -n "$UISupportedDevices" ]; then
         RemovePlistKey UISupportedDevices Payload/"$appname"/Info.plist
         Verbose "Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app"
-    else
-        Verbose "The specified iPA doesn't have UISupportedDevices" -a
     fi
 fi
 
@@ -1074,10 +948,10 @@ fi
 if [ -n "$fakesign" ]; then
     Verbose "Fakesigning iPA..." -a
         while read -r i; do
-            ldid -S -M "$i"
-            Verbose "Fakesigned $(basename "$i")" "Couldn't Fakesign $(basename "$i")" -v
+            ldid -S -M "$i" &>/dev/null
+            Verbose "Fakesigned $(basename "$i")" "Couldn't Fakesign $(basename "$i")" -v 
         done < <(find Payload -type f ! -name "*.*" ! -name "CodeResources" ! -name PkgInfo)
-    Verbose "Fakesigned iPA" "Couldn't Fakesign iPA"
+    Verbose "Finished Fakesigning" "Couldn't Fakesign App"
 fi
 
 # WRAPPING UP
@@ -1094,5 +968,3 @@ else
     status="$?"
 fi
 Verbose "Generated IPA at $output" "Couldn't generate IPA" 25 -x 
-
-exit_code=0
