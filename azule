@@ -52,19 +52,15 @@ case "$os" in
         }
 
         ExtractPlistValue () {
-            if ! plutil -key "$1" "$2" >> tmp 2>/dev/null; then
-                rm tmp &>/dev/null
-                return 1
-            fi
-
-            plutil -convert xml1 tmp &>/dev/null
-
+            unset key
             if [ -n "$3" ]; then
+                plutil -key "$1" "$2" >> tmp 2>/dev/null
+                plutil -convert xml1 tmp &>/dev/null
                 sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp
+                rm tmp &>/dev/null
             else
-                sed -n "s/.*<string>\(.*\)<\/string>.*/\1/p" tmp
+                plutil -key "$1" "$2" 2>/dev/null
             fi
-            rm tmp &>/dev/null
         }
 
         ExtractDEB () {
@@ -321,7 +317,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzklv args; do
         # iOS ONLY SWITCHES
         j) no_recurse=1 ;;
         l) ignore_outdated=1 ;;
-        m) force_update=1 ;;
+        m) outdated=1 ;;
         z) no_apt_update=1 ;;
         
         h) help ;;
@@ -333,7 +329,7 @@ done
 if [ -z "$outdir" ]; then while
     printf '[*] Output Directory: '
     read -r outdir
-    [ -z "$outdir" ] && echo "No Output Directory Specified"
+    [ -z "$outdir" ] && Announce "No Output Directory Specified"
 do true; done; fi
 
 # READING IPA
@@ -341,38 +337,68 @@ if [ -z "$ipadir" ]; then while
     printf '[*] Path to IPA: '
     read -r tmp
     ipadir="$(expand "$tmp")"
-    [ -z "$ipadir" ] && echo "No iPA Specified"
+    [ -z "$ipadir" ] && Announce "No iPA Specified"
 do true; done; fi
 
 if [ ! -e "$ipadir" ]; then
     if [ "$os" != "iOS" ]; then
         Announce "Invalid iPA" 7
     else
-        # CHECK IF APP IS ON THE APP STORE
-        latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
-    
-        if [ -z "$latestv" ]; then
+        Announce "Checking for App Updates..."
 
-            # CHECK IF APP IS INSTALLED
-
-            while read -r i; do
-                if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                    status=1
-                    break
-                fi
-            done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
-
-            if [ -z "$status" ]; then
-                Announce "Invalid App" 8
+        # CHECK IF APP IS INSTALLED
+        while read -r i; do
+            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
+                thinned="$(ExtractPlistValue variantID "$(dirname "$i")/iTunesMetadata.plist")"
+                break
             fi
-            ignore_outdated=2
+        done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+
+        # CHECK IF APP IS OUTDATED
+        latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
+        currentv="$(ExtractPlistValue CFBundleShortVersionString "$bfplist")"
+
+        if [ -z "$latestv" ] && [ -z "$currentv" ]; then
+            Announce "Invalid App" 8
         fi
-        drun=1
+
+        if [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]]; then
+            if [ -z "$ignore_outdated" ]; then
+                Announce "Update Available"
+                outdated=1
+            fi
+        fi
+
+        if [ -n "$outdated" ]; then
+            network_check
+
+            # VARIABLE CHECK
+            if [ -z "$appleid" ]; then while
+                printf '[*] Apple ID: '
+                read -r appleid
+                [ -z "$appleid" ] && Announce "No Apple ID Provided"
+            do true; done; fi
+
+            if [ -z "$appleid_password" ]; then while
+                printf '[*] Password for Apple ID: '
+                read -r -s appleid_password
+                [ -z "$appleid_password" ] && Announce "No Password Provided"
+            do true; done; fi
+
+            if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"; then exit_code=28 && exit; fi
+
+            Announce "Installing $(basename "$dir/$tweakid"/*.ipa) ..."
+            appinst "$dir/$tweakid"/*.ipa &>/dev/null
+            Announce "Installed $(basename "$dir/$tweakid"/*.ipa)"
+        else
+            Announce "No Updates Available"
+        fi
     fi
 fi
 
 # GUI
-if [[ -z "$run" && -z "$drun" ]]; then
+if [ -z "$run" ] && [ -e "$ipadir" ]; then
     PS3=$'Choose Arguements: '
     arguements=(
     "Inject Tweaks"
@@ -386,13 +412,6 @@ if [[ -z "$run" && -z "$drun" ]]; then
     "Set Custom Output Name"
     )
 
-    if [ "$os" == "iOS" ]; then
-        arguements+=(
-        "Do Not Update Outdated Apps"
-        "Force Update Apps"
-        )
-    fi
-
     arguements+=( "Done" )
     select i in "${arguements[@]}"; do
         case "$i" in
@@ -401,7 +420,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
                     printf '[*] Files or Tweak IDs: '
                     read -r tmp
                     files=( $tmp )
-                    [ -z "${files[*]}" ] && echo "No Files Provided"
+                    [ -z "${files[*]}" ] && Announce "No Files Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -410,7 +429,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 if [ -z "$name" ]; then while
                     printf '[*] New Display Name: '
                     read -r name
-                    [ -z "$name" ] && echo "No Display Name Provided"
+                    [ -z "$name" ] && Announce "No Display Name Provided"
                 do true; done; fi
             ;;
 
@@ -418,7 +437,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 if [ -z "$displayname" ]; then while
                     printf '[*] New Display Name: '
                     read -r displayname
-                    [ -z "$displayname" ] && echo "No Display Name Provided"
+                    [ -z "$displayname" ] && Announce "No Display Name Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -427,7 +446,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 if [ -z "$custom_version" ]; then while
                     printf '[*] New Version: '
                     read -r custom_version
-                    [ -z "$custom_version" ] && echo "No Version Provided"
+                    [ -z "$custom_version" ] && Announce "No Version Provided"
                 do true; done; fi
                 run=1
             ;;
@@ -436,14 +455,12 @@ if [[ -z "$run" && -z "$drun" ]]; then
                 if [ -z "$bundle" ]; then while
                     printf '[*] New BundleID: '
                     read -r bundle
-                    [ -z "$bundle" ] && echo "No BundleID Provided"
+                    [ -z "$bundle" ] && Announce "No BundleID Provided"
                 do true; done; fi
                 run=1
             ;;
 
             "Remove UISupportedDevices") remove_uisd=1 && run=1 ;;
-            "Do Not Update Outdated Apps") ignore_outdated=1 ;;
-            "Force Update Apps") force_update=1 ;;
             "Run With Verbose Mode") verbose="-v" ;;
             "Remove Watch App") remove_watchapp=1 && run=1 ;;
             "Remove App Extensions") remove_extensions=1 && run=1 ;;
@@ -454,7 +471,7 @@ if [[ -z "$run" && -z "$drun" ]]; then
 fi
 
 # VARIABLE CHECK
-if ! [[ -n "$run" || -n "$drun" ]]; then
+if [ -z "$run" ] && [ -e "$ipadir" ]; then
     Announce "Insufficient Arguements"
     Announce "Run "azule -h" for usage instructions" 27
 fi
@@ -504,7 +521,7 @@ Verbose "Temporary Directory $dir/$tweakid/Tweak has been created" "Couldn't cre
 cd "$dir/$tweakid" || exit
 
 # DECRYPTION
-if [ -n "$drun" ]; then
+if [ ! -e "$ipadir" ]; then
 
     # GET INFO.PLIST
     while read -r i; do
@@ -514,45 +531,6 @@ if [ -n "$drun" ]; then
         fi
     done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
 
-    # INSTALL APP UPDATES
-    if [ "$ignore_outdated" != "2" ]; then
-
-        # GET CURRENT VERSION
-        currentv="$(ExtractPlistValue CFBundleShortVersionString "$bfplist")"
-
-        if [ -n "$currentv" ]; then ignore_outdated+=1; fi
-        if [[ "$latestv" != "$currentv" && "$ignore_outdated" != "11" ]] || [ -n "$force_update" ]; then
-        
-            network_check
-
-            # VARIABLE CHECK
-            if [ -z "$appleid" ]; then while
-                printf '[*] Apple ID: '
-                read -r appleid
-                [ -z "$appleid" ] && echo "No Apple ID Provided"
-            do true; done; fi
-
-            if [ -z "$appleid_password" ]; then while
-                printf '[*] Password for Apple ID: '
-                read -r -s appleid_password
-                [ -z "$appleid_password" ] && echo "No Password Provided"
-            do true; done; fi
-
-            if ! ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"; then exit_code=28 && exit; fi
-
-            Announce "Installing $(basename "$dir/$tweakid"/*.ipa) ..."
-            appinst "$dir/$tweakid"/*.ipa &>/dev/null
-
-            # GET INFO.PLIST
-            while read -r i; do
-                if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                    bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
-                    break
-                fi
-            done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
-        fi
-    fi
-        
     if [ -n "$bfplist" ]; then
 
         # FLEXDECRYPT
