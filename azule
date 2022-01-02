@@ -509,7 +509,7 @@ if [ ! -e "$ipadir" ]; then
 
     # DECRYPT
     if [ -n "$bfplist" ]; then
-        mkdir -p
+        mkdir -p Payload
         appname="$(basename "$(dirname "$bfplist")")"
 
         while read -r i; do
