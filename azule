@@ -465,6 +465,7 @@ fi
 
 # REMOVING WATCH APP
 if [ -n "$remove_watchapp" ] || [ -n "$unzipped" ]; then
+    Announce "Removing Watch App..."
     while read -r i; do
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
         if [ "$DTPlatformName" == "watchos" ]; then
@@ -480,7 +481,7 @@ if [ -n "$remove_watchapp" ] || [ -n "$unzipped" ]; then
     if [ -n "$status" ]; then
          Verbose "Removed Watch App" "Couldn't Remove Watch App" -x
     else
-        watch_app="$(find "$dir/$tweakid/Payload" -type d -name Watch.app)"
+        watch_app="$(find "$dir/$tweakid/Payload" -type d -name Watch.app -o -name Watch -o -name WatchApp.app)"
         if [ -n "$watch_app" ]; then
             rm -rf "$watch_app"
             Verbose "Removed Watch App" "Couldn't Remove Watch App"
