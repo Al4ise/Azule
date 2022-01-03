@@ -1,11 +1,10 @@
 #!/bin/bash
 
+# ENABLE CLI OPTIONS
 shopt -s extglob
 
 # SET INITIAL DIRECTORIES
 rootdir="$PWD"
-empty_dir="$(mktemp -d)"
-cd "$empty_dir" || exit
 
 # SET PLATFORM
 case "$(uname -s)" in
@@ -52,7 +51,6 @@ case "$os" in
         }
 
         ExtractPlistValue () {
-            unset key
             if [ -n "$3" ]; then
                 plutil -key "$1" "$2" >> tmp 2>/dev/null
                 plutil -convert xml1 tmp &>/dev/null
@@ -161,7 +159,6 @@ Verbose () {
     if [ "$tv" != 0 ]; then 
 
         echo "[*] $2"
-        exit_code="$3"
 
         for p in "$@"; do
             if [ -e "$p" ]; then rm -rf "$p"; fi
@@ -186,7 +183,6 @@ network_check () {
 
 cleanup () {
     rm -rf "$dir"
-    rm -rf "$empty_dir"
     cd "$rootdir" || exit
     if [ -z "$exit_code" ]; then
         exit_code=0
@@ -271,7 +267,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
         b) bundle="${tmp[*]}" && run=1 ;;
         p) displayname="${tmp[*]}" && run=1 ;;
         i) ipadir="$(eval echo "${tmp[*]}")" ;;
-        o) outdir="$(eval echo "${tmp[*]}" | sed "s|\.|$rootdir|")" ;;
+        o) outdir="${tmp[*]}" ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) files+=( ${tmp[@]} ) && run=1 ;;
         a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
@@ -313,6 +309,15 @@ if [ -z "$ipadir" ]; then while
     [ -z "$ipadir" ] && Announce "No iPA Specified"
 do true; done; fi
 
+# CREATING .TMP DIRECTORIES
+dir="$(mktemp -d)"
+
+tweakid="$RANDOM"
+mkdir -p "$dir/$tweakid/Tweak"
+Verbose "Temporary Directory $dir/$tweakid/Tweak has been created" "Couldn't create Temporary Directory" 10 -v
+
+cd "$dir/$tweakid" || exit
+
 if [ ! -e "$ipadir" ]; then
     if [ "$os" != "iOS" ]; then
         Announce "Invalid iPA" 7
@@ -329,6 +334,7 @@ if [ ! -e "$ipadir" ]; then
         done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
 
         # CHECK IF APP IS OUTDATED
+        network_check
         latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
         currentv="$(ExtractPlistValue CFBundleShortVersionString "$bfplist")"
 
@@ -344,7 +350,6 @@ if [ ! -e "$ipadir" ]; then
         fi
 
         if [ -n "$outdated" ]; then
-            network_check
 
             # VARIABLE CHECK
             if [ -z "$appleid" ]; then while
@@ -371,79 +376,6 @@ if [ ! -e "$ipadir" ]; then
     fi
 fi
 
-# GUI
-if [ -z "$run" ] && [ -e "$ipadir" ]; then
-    PS3=$'Choose Arguements: '
-    arguements=(
-    "Inject Tweaks"
-    "Change Display Name"
-    "Change App Version"
-    "Change BundleID"
-    "Remove UISupportedDevices"
-    "Remove App Extensions"
-    "Remove Watch App"
-    "Run With Verbose Mode"
-    "Set Custom Output Name"
-    )
-
-    arguements+=( "Done" )
-    select i in "${arguements[@]}"; do
-        case "$i" in
-            "Inject Tweaks")
-                if [ -z "${files[*]}" ]; then while
-                    printf '[*] Files or Tweak IDs: '
-                    read -r tmp
-                    files=( $tmp )
-                    [ -z "${files[*]}" ] && Announce "No Files Provided"
-                do true; done; fi
-                run=1
-            ;;
-
-            "Set Custom Output Name")
-                if [ -z "$name" ]; then while
-                    printf '[*] New Display Name: '
-                    read -r name
-                    [ -z "$name" ] && Announce "No Display Name Provided"
-                do true; done; fi
-            ;;
-
-            "Change Display Name")
-                if [ -z "$displayname" ]; then while
-                    printf '[*] New Display Name: '
-                    read -r displayname
-                    [ -z "$displayname" ] && Announce "No Display Name Provided"
-                do true; done; fi
-                run=1
-            ;;
-
-            "Change App Version")
-                if [ -z "$custom_version" ]; then while
-                    printf '[*] New Version: '
-                    read -r custom_version
-                    [ -z "$custom_version" ] && Announce "No Version Provided"
-                do true; done; fi
-                run=1
-            ;;
-
-            "Change BundleID")
-                if [ -z "$bundle" ]; then while
-                    printf '[*] New BundleID: '
-                    read -r bundle
-                    [ -z "$bundle" ] && Announce "No BundleID Provided"
-                do true; done; fi
-                run=1
-            ;;
-
-            "Remove UISupportedDevices") remove_uisd=1 && run=1 ;;
-            "Run With Verbose Mode") verbose="-v" ;;
-            "Remove Watch App") remove_watchapp=1 && run=1 ;;
-            "Remove App Extensions") remove_extensions=1 && run=1 ;;
-
-            "Done") break ;;
-        esac
-    done
-fi
-
 # VARIABLE CHECK
 if [ -z "$run" ] && [ -e "$ipadir" ]; then
     Announce "Insufficient Arguements"
@@ -451,22 +383,13 @@ if [ -z "$run" ] && [ -e "$ipadir" ]; then
 fi
 
 # SETTING OUTPUT DIRECTORY AND NAME
-if [ ! -d "$outdir" ]; then
-    echo "f"
-    if [ "${outdir: -4}" == ".ipa" ]; then
-        output="$outdir"
-    else
-        if [ -z "$name" ]; then
-            name="$(basename "$ipadir" .ipa)"
-            for i in "${files[@]}"; do
-                name+="+$(basename "$i")"
-            done
-        fi
-        output="$outdir/$name.ipa"
-    fi
+
+outdir="$(eval echo "$outdir" | sed "s|\.|$rootdir|")"
+if [ "${outdir: -4}" == ".ipa" ]; then
+    output="$outdir"
 else
     if [ -z "$name" ]; then
-        name="$(basename "$ipadir")"
+        name="$(basename "$ipadir" .ipa)"
         for i in "${files[@]}"; do
             name+="+$(basename "$i")"
         done
@@ -486,15 +409,6 @@ fi
 mkdir -p "$(dirname "$output")"
 test -w "$(dirname "$output")"
 Verbose "iPA will be written to $output" "$output is an invalid output path" 9 -v
-
-# CREATING .TMP DIRECTORIES
-dir="$(mktemp -d)"
-
-tweakid="$RANDOM"
-mkdir -p "$dir/$tweakid/Tweak"
-Verbose "Temporary Directory $dir/$tweakid/Tweak has been created" "Couldn't create Temporary Directory" 10 -v
-
-cd "$dir/$tweakid" || exit
 
 # DECRYPTION
 if [ ! -e "$ipadir" ]; then
@@ -553,7 +467,7 @@ fi
 if [ -n "$remove_watchapp" ] || [ -n "$unzipped" ]; then
     while read -r i; do
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
-        if [ "$DTPlatformName" == "watchos" ] ; then
+        if [ "$DTPlatformName" == "watchos" ]; then
             if [ -z "$status" ]; then
                 Announce "Removing Watch App..."
             fi
@@ -562,10 +476,17 @@ if [ -n "$remove_watchapp" ] || [ -n "$unzipped" ]; then
         fi
     done < <(find "$dir/$tweakid/Payload" -name "Info.plist")
 
+
     if [ -n "$status" ]; then
          Verbose "Removed Watch App" "Couldn't Remove Watch App" -x
     else
-        Announce "There Was No Watch App To Remove"
+        watch_app="$(find "$dir/$tweakid/Payload" -type d -name Watch.app)"
+        if [ -n "$watch_app" ]; then
+            rm -rf "$watch_app"
+            Verbose "Removed Watch App" "Couldn't Remove Watch App"
+        else
+            Announce "There Was No Watch App To Remove"
+        fi
     fi
 fi
 
@@ -636,8 +557,8 @@ if [ -n "$files" ]; then
     done
     
     # FETCHING DEBS
+    network_check
     if [ "$os" == "iOS" ] && [ -n "$apt" ]; then
-        network_check
             
         # SET ROOT PASSWORD
         if [ -z "$root_password" ]; then
@@ -866,8 +787,18 @@ fi
 
 # CHANGING BUNDLEID
 if [ -n "$bundle" ]; then
-    ReplacePlistValue "$bundle" CFBundleIdentifier Payload/"$appname"/Info.plist
-    Verbose "Changed App BundleID to $bundle" "Couldn't Change App BundleID"
+    orig_bundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
+    Verbose "Obtained Original BundleID" "Couldn't Obtain Original BundleID"
+
+    while read -r i; do
+        CFBundleIdentifier="$(ExtractPlistValue CFBundleIdentifier "$i")"
+        if [[ "$CFBundleIdentifier" =~ $orig_bundleid ]]; then
+            CFBundleIdentifier="${CFBundleIdentifier//"$orig_bundleid"/"$bundle"}"
+            ReplacePlistValue "$CFBundleIdentifier" CFBundleIdentifier "$i"
+            status=$(( status + $? ))
+        fi
+    done < <(find Payload/"$appname" -name "Info.plist")
+    Verbose "Changed App BundleID to $bundle" "Couldn't Change App BundleID" -x
 fi
 
 # CHANGING DISPLAY NAME
@@ -887,7 +818,7 @@ fi
 if [ -n "$fakesign" ]; then
     Announce "Fakesigning iPA..."
         while read -r i; do
-            ldid -S -M "$i" &>/dev/null
+            ldid -s "$i" &>/dev/null
             Verbose "Fakesigned $(basename "$i")" "Couldn't Fakesign $(basename "$i")" -v 
         done < <(find Payload -type f ! -name "*.*" ! -name "CodeResources" ! -name PkgInfo)
     Verbose "Finished Fakesigning" "Couldn't Fakesign App"
