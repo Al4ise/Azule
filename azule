@@ -175,12 +175,6 @@ Verbose () {
     fi
 }
 
-network_check () {
-    if ! curl -I google.com &>/dev/null; then
-        Announce "No Connection to the Internet" 26
-    fi
-}
-
 cleanup () {
     rm -rf "$dir"
     cd "$rootdir" || exit
@@ -294,13 +288,6 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
     esac
 done
 
-# READING OUTPUT DIRECTORY
-if [ -z "$outdir" ]; then while
-    printf '[*] Output Directory: '
-    read -r outdir
-    [ -z "$outdir" ] && Announce "No Output Directory Specified"
-do true; done; fi
-
 # READING IPA
 if [ -z "$ipadir" ]; then while
     printf '[*] Path to IPA: '
@@ -327,16 +314,16 @@ if [ ! -e "$ipadir" ]; then
         # CHECK IF APP IS INSTALLED
         while read -r i; do
             if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-                bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
+                info_plist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
                 thinned="$(ExtractPlistValue variantID "$(dirname "$i")/iTunesMetadata.plist")"
                 break
             fi
         done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
 
         # CHECK IF APP IS OUTDATED
-        network_check
+        if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
         latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
-        currentv="$(ExtractPlistValue CFBundleShortVersionString "$bfplist")"
+        currentv="$(ExtractPlistValue CFBundleShortVersionString "$info_plist")"
 
         if [ -z "$latestv" ] && [ -z "$currentv" ]; then
             Announce "Invalid App" 8
@@ -382,8 +369,14 @@ if [ -z "$run" ] && [ -e "$ipadir" ]; then
     Announce "Run "azule -h" for usage instructions" 27
 fi
 
-# SETTING OUTPUT DIRECTORY AND NAME
+# READING OUTPUT DIRECTORY
+if [ -z "$outdir" ]; then while
+    printf '[*] Output Directory: '
+    read -r outdir
+    [ -z "$outdir" ] && Announce "No Output Directory Specified"
+do true; done; fi
 
+# SETTING OUTPUT DIRECTORY AND NAME
 outdir="$(eval echo "$outdir" | sed "s|\.|$rootdir|")"
 if [ "${outdir: -4}" == ".ipa" ]; then
     output="$outdir"
@@ -441,13 +434,12 @@ if [ ! -e "$ipadir" ]; then
         done < <(find "$(dirname "$bfplist")" -name "Info.plist")
     
         rsync --ignore-existing -a "$(dirname "$bfplist")" Payload
-        Verbose "Finished Decryption" "App Was Not Encrypted" -x 
-        unzipped=1
+        Verbose "Finished Decryption" "App Was Not Encrypted" -x
     fi
 fi
 
 # EXTRACTING IPA
-if [[ -n "$run" && -z "$unzipped" ]]; then
+if [[ -n "$run" && -z "$bfplist" ]]; then
     Announce "Extracting iPA..."
     unzip -q "$ipadir" -d "$dir/$tweakid"
     Verbose "IPA extracted" "Couldn't extract IPA" 11
@@ -464,7 +456,7 @@ if [ -n "$remove_extensions" ]; then
 fi
 
 # REMOVING WATCH APP
-if [ -n "$remove_watchapp" ] || [ -n "$unzipped" ]; then
+if [ -n "$remove_watchapp" ] || [ -n "$bfplist" ]; then
     Announce "Removing Watch App..."
     while read -r i; do
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
@@ -558,7 +550,7 @@ if [ -n "$files" ]; then
     done
     
     # FETCHING DEBS
-    network_check
+    if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
     if [ "$os" == "iOS" ] && [ -n "$apt" ]; then
             
         # SET ROOT PASSWORD
@@ -831,7 +823,7 @@ if [ -e "$output" ]; then
 fi
 
 # GENERATING IPA
-if [ -n "$run" ] || [ -n "$unzipped" ]; then
+if [ -n "$run" ] || [ -n "$bfplist" ]; then
     Announce "Generating iPA..."
     zip -rq "$output" Payload
     status="$?"
