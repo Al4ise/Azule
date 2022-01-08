@@ -63,7 +63,7 @@ case "$os" in
 
         ExtractDEB () {
             if [ "$2" = "fetch" ]; then
-                Announce "Fetching $1..."
+                Announce "Fetching $1..." -v
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched $1" "Couldn't fetch $1" 1
                 Announce "Extracting $1..."
@@ -100,7 +100,7 @@ case "$os" in
             TMP=$(mktemp -d)
             cd "$TMP" || exit
             if [ "$2" = "fetch" ]; then
-                Announce "Fetching $1..."
+                Announce "Fetching $1..." -v
                 curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
                 Verbose "Fetched $1" "Couldn't fetch $1" 1 "$TMP"
                 ar -x "tweak.deb"
@@ -228,7 +228,7 @@ help () {
     echo
     echo "  -h                           Print this help menu"
     echo
-    exit
+    cleanup
 }
 
 # CLEAN ON EXIT
@@ -261,7 +261,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
         i) ipadir="$(eval echo "${tmp[*]}")" ;;
         o) outdir="${tmp[*]}" ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
-        f) files+=( ${tmp[@]} ) && run=1 ;;
+        f) IFS=" " read -r -a files <<< "${tmp[*]}" && run=1 ;;
         a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
         x) appleid="${tmp[0]}" && unset "tmp[0]" && appleid_password="${tmp[*]}" ;;
 
@@ -282,7 +282,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
         z) no_apt_update=1 ;;
         
         h) help ;;
-        *) Announce "Invalid option: $*. Run "azule -h" for help" 6 ;;
+        *) Announce "Invalid option: $*. Run 'azule -h' for help" 6 ;;
     esac
 done
 
@@ -296,6 +296,7 @@ mkdir -p "$dir/$tweakid/Tweak"
 Verbose "Temporary Directory $dir/$tweakid/Tweak has been created" "Couldn't create Temporary Directory" 10 -v
 cd "$dir/$tweakid" || exit
 
+# INSTALLING UPDATES AND DECRYPTION
 if [ ! -e "$ipadir" ]; then
     Announce "Checking for App Updates..."
 
@@ -320,6 +321,7 @@ if [ ! -e "$ipadir" ]; then
     if [ -n "$outdated" ] || { [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]]; }; then
         if [ -z "$ignore_outdated" ]; then
             Announce "Update Available"
+
             # VARIABLE CHECK
             if [ -z "$appleid" ]; then while
                 printf '[*] Apple ID: '
@@ -333,6 +335,7 @@ if [ ! -e "$ipadir" ]; then
                 [ -z "$appleid_password" ] && Announce "No Password Provided"
             do true; done; fi
 
+            # DOWNLOAD AND INSTALL UPDATES
             ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
             Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
 
@@ -370,10 +373,11 @@ if [ ! -e "$ipadir" ]; then
         fi
     done < <(find "$(dirname "$bfplist")" -name "Info.plist")
     
-    rsync --ignore-existing -a "$(dirname "$bfplist")" Payload
+    cp -a -n "$(dirname "$bfplist")" Payload
     Verbose "Finished Decryption" "App Was Not Encrypted" -x
 
 elif [ -n "$run" ]; then
+
     # EXTRACTING IPA
     Announce "Extracting iPA..."
     unzip -q "$ipadir" -d "$dir/$tweakid"
@@ -445,9 +449,9 @@ fi
 # SETTING APP VARIABLES
 appname="$(basename Payload/*.app)"
 executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
-Verbose "App executable is $(echo "$executable" | sed "s|^.*.app/|@executable_path/|")" "Couldn't set app executable" 12 -v
+Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
 rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
-Verbose "App rpath is $(echo "$rpath" | sed "s|^.*.app/|@executable_path/|")" "Couldn't set app rpath" 13 -v
+Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v 
 mkdir -p "$rpath"
 
 # ENCRYPTION CHECK
@@ -463,7 +467,7 @@ if [ -z "$ignore_encrypted" ]; then
 fi
 
 # PROCESSING FILES
-if [ -n "$files" ]; then
+if [ -n "${files[*]}" ]; then
     max="${#files[@]}"
     for i in "${!files[@]}"; do
         x="$i"
@@ -482,17 +486,17 @@ if [ -n "$files" ]; then
                     ;;
                     
                     *.dylib)
-                        rsync -a "$(eval echo "$string")" "$dir/$tweakid/Tweak"
+                        cp -a "$(eval echo "$string")" "$dir/$tweakid/Tweak"
                         Verbose "Copied $(basename "$(eval echo "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v
                     ;;
 
                     *.framework)
-                        rsync -a "$(eval echo "$string")" "$dir/$tweakid/Tweak"
+                        cp -a "$(eval echo "$string")" "$dir/$tweakid/Tweak"
                         Verbose "Copied $(basename "$(eval echo "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v
                     ;;
 
                     *)
-                        rsync -a "$(eval echo "$string")" Payload/"$appname"
+                        cp -a "$(eval echo "$string")" Payload/"$appname"
                         Verbose "Copied $(basename "$(eval echo "$string")") to app directory" "Couldn't Copy $(basename "$i") to app directory" 16
                     ;;
                 esac
@@ -527,8 +531,8 @@ if [ -n "$files" ]; then
             apt_packages=( "${files[@]}" )
         else
             for j in "${files[@]}"; do
-                tmp=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w") )
-                apt_or=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | grep ": " | cut -d: -f2 | xargs) )
+                IFS=" " read -r -a tmp <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
+                IFS=" " read -r -a apt_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | grep ": " | cut -d: -f2 | xargs)"
 
                 for o in "${!apt_or[@]}"; do
                     if [ -n "$(apt -qq list "${apt_or[o]}" 2>/dev/null)" ]; then
@@ -539,10 +543,10 @@ if [ -n "$files" ]; then
                 rm_packages+=("${apt_or[@]}")
                 for t in "${tmp[@]}"; do
                     if [[ "$t" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|firmware) ]]; then
-                        rm_packages+=( $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$t" | grep "^\w") )
+                        IFS=" " read -r -a rm_packages <<< "${rm_packages[*]} $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$t" | grep "^\w" | xargs)"
                     fi
                 done
-                apt_packages+=( ${tmp[@]} )
+                IFS=" " read -r -a apt_packages <<< "${apt_packages[*]} ${tmp[*]}"
             done
 
             for q in "${!apt_packages[@]}"; do
@@ -558,7 +562,7 @@ if [ -n "$files" ]; then
 
         # DOWNLOADING PACKAGES
         for x in "${apt_packages[@]}"; do
-            Announce "Fetching $x"
+            Announce "Fetching $x..." -v
             echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
             Verbose "Fetched $x" "Couldn't Fetch $x" 17
         done
@@ -586,7 +590,7 @@ if [ -n "$files" ]; then
         if ! [ -e "${i%.*}.plist" ]; then
             inject+=( "$(basename "$i")" )
             lib_dylibs+=( "$(basename "$i")" )
-            rsync -a "$i" "$rpath"
+            cp -a "$i" "$rpath"
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
@@ -598,7 +602,7 @@ if [ -n "$files" ]; then
                     
                     if [[ "$identifier" =~ $ipabundleid ]]; then
                         inject+=( "$(basename "$i")" )
-                        rsync -a "$i" "$rpath"
+                        cp -a "$i" "$rpath"
                         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
                     fi
                 ;;
@@ -606,7 +610,7 @@ if [ -n "$files" ]; then
                 Executables)
                     if [[ "$identifier" =~ $(basename "$executable") ]]; then
                         inject+=( "$(basename "$i")" )
-                        rsync -a "$i" "$rpath"
+                        cp -a "$i" "$rpath"
                         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
                     fi
                 ;;
@@ -618,7 +622,7 @@ if [ -n "$files" ]; then
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
         if [ -e "$i/Info.plist" ]; then
-            rsync -a "$i" "$rpath"
+            cp -a "$i" "$rpath"
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
             lib_dylibs+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
@@ -627,7 +631,7 @@ if [ -n "$files" ]; then
 
     # MOVING BUNDLES
     while read -r i; do
-        rsync -a "$i" "Payload/$appname/"
+        cp -a "$i" "Payload/$appname/"
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
@@ -681,8 +685,8 @@ if [ -n "$files" ]; then
                             fi
 
                             if [ "$os" == "iOS" ]; then
-                                rsync -a "/var/mobile/Azule/lib/$hl_file" "$rpath"
-                            elif ! rsync -a "$AZULE/lib/$hl_file" "$rpath" &>/dev/null; then
+                                cp -a "/var/mobile/Azule/lib/$hl_file" "$rpath"
+                            elif ! cp -a "$AZULE/lib/$hl_file" "$rpath" &>/dev/null; then
                                 Announce "$hl_file not downloaded, please run setup-azule." 22
                             fi
                         fi
