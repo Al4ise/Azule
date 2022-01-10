@@ -178,9 +178,7 @@ Verbose () {
 cleanup () {
     rm -rf "$dir"
     cd "$rootdir" || exit
-    if [ -z "$exit_code" ]; then
-        exit_code=0
-    fi
+    if [ -z "$exit_code" ]; then exit_code=0; fi
     if [ -n "$ignore_errors" ]; then
         exit_code=0
     else
@@ -193,7 +191,7 @@ help () {
     echo "Usage: azule [arguements]"
     echo
     echo "Mandatory Arguements:"
-    echo "  -i [Path/BundleID]           Specify the path to the IPA to patch"
+    echo "  -i [Path/BundleID]           Specify the the IPA to patch"
     echo "  -o [Path]                    Specify an output directory"
     echo
     echo "Optional Arguements:"
@@ -212,7 +210,7 @@ help () {
     echo "  -q                           Ignore errors"
             
     if [ "$os" == "iOS" ]; then
-        echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA"
+        echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
         echo "  -a [Root Password]           Use APT instead of Parcility (Leave Blank for Default Password)"
         echo "  -m                           Enforce Updating Apps Before Decrypting"
         echo "  -l                           Don't Update Outdated Apps"
@@ -222,7 +220,11 @@ help () {
             
     echo
     echo "Examples:"
-    echo "  azule -n Foo -i com.example.foo -o ~/Foo/ -f ~/Foo.dylib ~/Foo.bundle"
+
+    if [ "$os" == "iOS" ]; then
+        echo "  azule -n Foo -i com.example.foo -x appleid@example.com password123 -o ~/Foo/ -f com.alaise.example ~/Foo.bundle -a -m"
+    fi
+
     echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
     echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
     echo
@@ -259,7 +261,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
         b) bundle="${tmp[*]}" && run=1 ;;
         p) displayname="${tmp[*]}" && run=1 ;;
         i) ipadir="$(eval echo "${tmp[*]}")" ;;
-        o) outdir="${tmp[*]}" ;;
+        o) outdir="$(eval echo "${tmp[*]}" | sed "s|\.|$rootdir|")" ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) IFS=" " read -r -a files <<< "${tmp[*]}" && run=1 ;;
         a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
@@ -314,35 +316,33 @@ if [ ! -e "$ipadir" ]; then
     latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
     currentv="$(ExtractPlistValue CFBundleShortVersionString "$info_plist")"
 
-    if [ -z "$latestv" ] && [ -z "$currentv" ]; then
-            Announce "Invalid App" 8
-    fi
+    # VARIABLE CHECK
+    if [ -z "$latestv" ] && [ -z "$currentv" ]; then Announce "Invalid App" 8; fi
 
-    if [ -n "$outdated" ] || { [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]]; }; then
-        if [ -z "$ignore_outdated" ]; then
-            Announce "Update Available"
+    # UPDATING OUTDATED APPS
+    if [ -n "$outdated" ] || { [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]] && [ -z "$ignore_outdated" ]; }; then
+        Announce "Update Available"
 
-            # VARIABLE CHECK
-            if [ -z "$appleid" ]; then while
-                printf '[*] Apple ID: '
-                read -r appleid
-                [ -z "$appleid" ] && Announce "No Apple ID Provided"
-            do true; done; fi
+        # VARIABLE CHECK
+        if [ -z "$appleid" ]; then while
+            printf '[*] Apple ID: '
+            read -r appleid
+            [ -z "$appleid" ] && Announce "No Apple ID Provided"
+        do true; done; fi
 
-            if [ -z "$appleid_password" ]; then while
-                printf '[*] Password for Apple ID: '
-                read -r -s appleid_password
-                [ -z "$appleid_password" ] && Announce "No Password Provided"
-            do true; done; fi
+        if [ -z "$appleid_password" ]; then while
+            printf '[*] Password for Apple ID: '
+            read -r -s appleid_password
+            [ -z "$appleid_password" ] && Announce "No Password Provided"
+        do true; done; fi
 
-            # DOWNLOAD AND INSTALL UPDATES
-            ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
-            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
+        # DOWNLOAD AND INSTALL UPDATES
+        ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
+        Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
 
-            Announce "Installing $(basename "$dir/$tweakid"/*.ipa) ..."
-            appinst "$dir/$tweakid"/*.ipa &>/dev/null
-            Announce "Installed $(basename "$dir/$tweakid"/*.ipa)"
-        fi
+        Announce "Installing $(basename "$dir/$tweakid"/*.ipa) ..."
+        appinst "$dir/$tweakid"/*.ipa &>/dev/null
+        Announce "Installed $(basename "$dir/$tweakid"/*.ipa)"
     else
         Announce "No Updates Available"
     fi
@@ -367,6 +367,7 @@ if [ ! -e "$ipadir" ]; then
                 Announce "Decrypting App..."
             fi
             mkdir -p "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")"
+            Announce "Decrypting $CFBundleExecutable..." -v
             flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")/$CFBundleExecutable" &>/dev/null
             Verbose "Decrypted $CFBundleExecutable" "Couldn't Decrypt $CFBundleExecutable" -v
             status=0
@@ -385,7 +386,6 @@ elif [ -n "$run" ]; then
 fi
 
 # SETTING OUTPUT DIRECTORY AND NAME
-outdir="$(eval echo "$outdir" | sed "s|\.|$rootdir|")"
 if ! [ "${outdir: -4}" == ".ipa" ]; then
     if [ -z "$name" ]; then
         name="$(basename "$ipadir" .ipa)"
@@ -485,12 +485,7 @@ if [ -n "${files[*]}" ]; then
                         ExtractDEB "$(eval echo "$string")"
                     ;;
                     
-                    *.dylib)
-                        cp -a "$(eval echo "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Copied $(basename "$(eval echo "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v
-                    ;;
-
-                    *.framework)
+                    *.dylib|*.framework)
                         cp -a "$(eval echo "$string")" "$dir/$tweakid/Tweak"
                         Verbose "Copied $(basename "$(eval echo "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v
                     ;;
@@ -525,46 +520,57 @@ if [ -n "${files[*]}" ]; then
             Verbose "Refreshed Sources" "Couldn't Refresh Sources"
         fi
 
+        # CLEAN WORK DIRECTORY
         while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
 
         if [ -n "$no_recurse" ]; then
             apt_packages=( "${files[@]}" )
         else
             for j in "${files[@]}"; do
-                IFS=" " read -r -a tmp <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
-                IFS=" " read -r -a apt_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | grep ": " | cut -d: -f2 | xargs)"
 
-                for o in "${!apt_or[@]}"; do
-                    if [ -n "$(apt -qq list "${apt_or[o]}" 2>/dev/null)" ]; then
-                        unset "apt_or[o]"
-                        break
-                    fi
-                done
-                rm_packages+=("${apt_or[@]}")
-                for t in "${tmp[@]}"; do
-                    if [[ "$t" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|firmware) ]]; then
-                        IFS=" " read -r -a rm_packages <<< "${rm_packages[*]} $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$t" | grep "^\w" | xargs)"
-                    fi
-                done
-                IFS=" " read -r -a apt_packages <<< "${apt_packages[*]} ${tmp[*]}"
-            done
+                # NO OR ### WIP
+                IFS=" " read -ra apt_no_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
 
-            for q in "${!apt_packages[@]}"; do
-                for z in "${!rm_packages[@]}"; do
-                    if [ "${apt_packages[q]}" == "${rm_packages[z]}" ]; then
-                        unset "apt_packages[q]"
-                        unset "rm_packages[z]"
-                        break
+                # ONLY OR
+                IFS="--" read -ra apt_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | cut -d: -f2 | sed "s|>||g" | sed "s|<||g" | xargs)"
+                for i in "${apt_or[@]}"; do
+                    if ! [[ "$i" =~ firmware ]] && ! [[ "$i" =~ cy+cpu.arm64 ]]; then
+                        for x in $i; do
+                            if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
+                                found=1
+                                apt_packages+=("$x")
+                                break
+                            fi
+                        done
+                        if [ -z "$found" ]; then
+                            for x in $i; do
+                                Announce "Couldn't find $x on APT"
+                            done
+                        fi
+                        unset "found"
                     fi
+
+                    # REMOVE UNNEEDED PACKAGES FROM NO OR
+                    for del in $i; do
+                        apt_no_or=("${apt_no_or[@]/$del}")
+                    done
                 done
+
+                IFS=" " read -r -a apt_packages <<< "${apt_packages[*]} ${apt_no_or[*]}"
             done
         fi
 
         # DOWNLOADING PACKAGES
-        for x in "${apt_packages[@]}"; do
-            Announce "Fetching $x..." -v
-            echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
-            Verbose "Fetched $x" "Couldn't Fetch $x" 17
+        for x in $(echo "${apt_packages[@]}" | sort -u); do
+            if ! [[ "$x" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|org.coolstar.safemode|com.saurik.substrate.safemode|firmware|cy+cpu.arm64) ]]; then
+                if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
+                    Announce "Fetching $x..." -v
+                    echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
+                    Verbose "Fetched $x" "Couldn't Fetch $x" 17
+                else
+                    Announce "Couldn't find $x on APT"
+                fi
+            fi
         done
 
         while read -r g; do
@@ -582,7 +588,7 @@ if [ -n "${files[*]}" ]; then
         done
     fi
 
-    # SPECIFYING DYLIBS
+    # MAPPING DYLIBS
     while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib')
 
     # DYLIB SELECTION
@@ -649,9 +655,7 @@ if [ -n "${files[*]}" ]; then
                         break
                     else
                         install_name_tool -change "$l" @rpath/"$x" "$rpath/$i" &>/dev/null
-                        if ! [[ "${linked[*]}" =~ $x ]]; then
-                            linked+=( "$x" )
-                        fi
+                        if ! [[ "${linked[*]}" =~ $x ]]; then linked+=( "$x" ); fi
                         tlnk=$(( tlnk + $? ))
                         break
                     fi
@@ -675,7 +679,7 @@ if [ -n "${files[*]}" ]; then
     if [ -n "${inject[*]}" ]; then
         for hookinglibrary in "libsubstitute.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
             for i in "${inject[@]}"; do
-                for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
+                for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
                         if [ ! -e "$rpath/$hookinglibrary" ]; then
                             if [[ "$hookinglibrary" =~ .framework ]]; then
@@ -701,32 +705,13 @@ if [ -n "${files[*]}" ]; then
             Verbose "Linked $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" 23 -x
         fi
     fi
-    
-    # MAKING SURE DEPENDENCIES WILL NOT BE INJECTED
-    for l in "${linked[@]}"; do
-        if [[ "${lib_dylibs[*]}" =~ $l ]]; then
-            for i in "${!inject[@]}"; do
-                if [ "$l" == "${inject[i]}" ]; then
-                    unset "inject[i]"
-                fi
-            done
-        fi
-    done
-
-    # MAKING SURE NOTHING WILL BE INJECTED TWICE
-    for i in "${!inject[@]}"; do
-        for l in $(otool -L "$executable" | cut -d ' ' -f1); do
-            if [[ "$l" =~ /"${inject[i]}" ]]; then
-                unset "inject[i]"
-                break
-            fi
-        done
-    done
 
     # INJECTING LIBRARIES
     for i in $(printf "%s\n" "${inject[@]}" | sort -u); do
-        insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &> /dev/null
-        Verbose "Injected $i" "Couldn't inject $i" 24
+        if { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $i ]]; }; then
+            insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &>/dev/null
+            Verbose "Injected $i" "Couldn't inject $i" 24
+        fi
     done
 fi
 
@@ -778,18 +763,10 @@ if [ -n "$fakesign" ]; then
     Verbose "Finished Fakesigning" "Couldn't Fakesign App"
 fi
 
-# CLEANING UP OUTDIR
-if [ -e "$outdir" ]; then
-    rm -rf "$outdir"
-fi
-
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
     Announce "Generating iPA..."
+    if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
     zip -rq "$outdir" Payload
-    status="$?"
-else
-    mv "$ipadir" "$outdir"
-    status="$?"
+    Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25
 fi
-Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25 -x 
