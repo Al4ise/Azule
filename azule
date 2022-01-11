@@ -289,7 +289,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
 done
 
 # VARIABLE CHECK
-if [[ -z "$outdir" || -z "$ipadir" ]] || { [ -z "$run" ] && [[ "$os" != "iOS"  || -e "$ipadir" ]]; }; then help; fi
+if [[ -z "$outdir" || -z "$ipadir" ]] || { [ -z "$run" ] && [[ "$os" != "iOS" || -e "$ipadir" ]]; }; then help; fi
 
 # CREATING .TMP DIRECTORIES
 dir="$(mktemp -d)"
@@ -300,51 +300,53 @@ cd "$dir/$tweakid" || exit
 
 # INSTALLING UPDATES AND DECRYPTION
 if [ ! -e "$ipadir" ]; then
-    Announce "Checking for App Updates..."
+    if [ -z "$ignore_outdated" ]; then
+        Announce "Checking for App Updates..."
 
-    # CHECK IF APP IS INSTALLED
-    while read -r i; do
-        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
-            info_plist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
-            thinned="$(ExtractPlistValue variantID "$(dirname "$i")/iTunesMetadata.plist")"
-            break
-        fi
-    done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+        # CHECK IF APP IS INSTALLED
+        while read -r i; do
+            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+                info_plist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
+                thinned="$(ExtractPlistValue variantID "$(dirname "$i")/iTunesMetadata.plist")"
+                break
+            fi
+        done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
 
-    # CHECK IF APP IS OUTDATED
-    if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
-    latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
-    currentv="$(ExtractPlistValue CFBundleShortVersionString "$info_plist")"
-
-    # VARIABLE CHECK
-    if [ -z "$latestv" ] && [ -z "$currentv" ]; then Announce "Invalid App" 8; fi
-
-    # UPDATING OUTDATED APPS
-    if [ -n "$outdated" ] || { [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]] && [ -z "$ignore_outdated" ]; }; then
-        Announce "Update Available"
+        # CHECK IF APP IS OUTDATED
+        if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
+        latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
+        currentv="$(ExtractPlistValue CFBundleShortVersionString "$info_plist")"
 
         # VARIABLE CHECK
-        if [ -z "$appleid" ]; then while
-            printf '[*] Apple ID: '
-            read -r appleid
-            [ -z "$appleid" ] && Announce "No Apple ID Provided"
-        do true; done; fi
+        if [ -z "$latestv" ] && [ -z "$currentv" ]; then Announce "Invalid App" 8; fi
 
-        if [ -z "$appleid_password" ]; then while
-            printf '[*] Password for Apple ID: '
-            read -r -s appleid_password
-            [ -z "$appleid_password" ] && Announce "No Password Provided"
-        do true; done; fi
+        # UPDATING OUTDATED APPS
+        if [ -n "$outdated" ] || { [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]]; }; then
+            Announce "Update Available"
 
-        # DOWNLOAD AND INSTALL UPDATES
-        ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
-        Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
+            # VARIABLE CHECK
+            if [ -z "$appleid" ]; then while
+                printf '[*] Apple ID: '
+                read -r appleid
+                [ -z "$appleid" ] && Announce "No Apple ID Provided"
+            do true; done; fi
 
-        Announce "Installing $(basename "$dir/$tweakid"/*.ipa) ..."
-        appinst "$dir/$tweakid"/*.ipa &>/dev/null
-        Announce "Installed $(basename "$dir/$tweakid"/*.ipa)"
-    else
-        Announce "No Updates Available"
+            if [ -z "$appleid_password" ]; then while
+                printf '[*] Password for Apple ID: '
+                read -r -s appleid_password
+                [ -z "$appleid_password" ] && Announce "No Password Provided"
+            do true; done; fi
+
+            # DOWNLOAD AND INSTALL UPDATES
+            ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
+            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
+
+            Announce "Installing $(basename "$dir/$tweakid"/*.ipa) ..."
+            appinst "$dir/$tweakid"/*.ipa &>/dev/null
+            Announce "Installed $(basename "$dir/$tweakid"/*.ipa)"
+        else
+            Announce "No Updates Available"
+        fi
     fi
 
     # DECRYPTION: GET MAIN INFO.PLIST
@@ -377,8 +379,7 @@ if [ ! -e "$ipadir" ]; then
     cp -a -n "$(dirname "$bfplist")" Payload
     Verbose "Finished Decryption" "App Was Not Encrypted" -x
 
-elif [ -n "$run" ]; then
-
+else
     # EXTRACTING IPA
     Announce "Extracting iPA..."
     unzip -q "$ipadir" -d "$dir/$tweakid"
@@ -504,95 +505,96 @@ if [ -n "${files[*]}" ]; then
             x=$((x + 1))
         done
     done
+
+    if [ -n "${files[*]}" ]; then
+
+        # NETWORK CHECK
+        if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
     
-    # FETCHING DEBS
-    if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
-    if [ "$os" == "iOS" ] && [ -n "$apt" ]; then
+        # FETCHING DEBS
+        if [ -n "$apt" ]; then
             
-        # SET ROOT PASSWORD
-        if [ -z "$root_password" ]; then
-            root_password="alpine"
-        fi
+            # SET ROOT PASSWORD
+            if [ -z "$root_password" ]; then
+                root_password="alpine"
+            fi
 
-        if [ -z "$no_apt_update" ]; then
-            Announce "Refreshing Sources..."
-            echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
-            Verbose "Refreshed Sources" "Couldn't Refresh Sources"
-        fi
+            if [ -z "$no_apt_update" ]; then
+                Announce "Refreshing Sources..."
+                echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
+                Verbose "Refreshed Sources" "Couldn't Refresh Sources"
+            fi
 
-        # CLEAN WORK DIRECTORY
-        while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+            # CLEAN WORK DIRECTORY
+            while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
 
-        if [ -n "$no_recurse" ]; then
-            apt_packages=( "${files[@]}" )
-        else
-            for j in "${files[@]}"; do
+            if [ -n "$no_recurse" ]; then
+                apt_packages=( "${files[@]}" )
+            else
+                for j in "${files[@]}"; do
 
-                # NO OR ### WIP
-                IFS=" " read -ra apt_no_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
+                    # NO OR ### WIP
+                    IFS=" " read -ra apt_no_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
 
-                # ONLY OR
-                IFS="--" read -ra apt_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | cut -d: -f2 | sed "s|>||g" | sed "s|<||g" | xargs)"
-                for i in "${apt_or[@]}"; do
-                    if ! [[ "$i" =~ firmware ]] && ! [[ "$i" =~ cy+cpu.arm64 ]]; then
-                        for x in $i; do
-                            if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
-                                found=1
-                                apt_packages+=("$x")
-                                break
-                            fi
-                        done
-                        if [ -z "$found" ]; then
+                    # ONLY OR
+                    IFS="--" read -ra apt_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | cut -d: -f2 | sed "s|>||g" | sed "s|<||g" | xargs)"
+                    for i in "${apt_or[@]}"; do
+                        if ! [[ "$i" =~ firmware ]] && ! [[ "$i" =~ cy+cpu.arm64 ]]; then
                             for x in $i; do
-                                Announce "Couldn't find $x on APT"
+                                if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
+                                    found=1
+                                    apt_packages+=("$x")
+                                    break
+                                fi
                             done
+                            if [ -z "$found" ]; then
+                                for x in $i; do
+                                    Announce "Couldn't find $x on APT"
+                                done
+                            fi
+                            unset "found"
                         fi
-                        unset "found"
-                    fi
 
-                    # REMOVE UNNEEDED PACKAGES FROM NO OR
-                    for del in $i; do
-                        apt_no_or=("${apt_no_or[@]/$del}")
+                        # REMOVE UNNEEDED PACKAGES FROM NO OR
+                        for del in $i; do
+                            apt_no_or=("${apt_no_or[@]/$del}")
+                        done
                     done
-                done
 
-                IFS=" " read -r -a apt_packages <<< "${apt_packages[*]} ${apt_no_or[*]}"
+                    IFS=" " read -r -a apt_packages <<< "${apt_packages[*]} ${apt_no_or[*]}"
+                done
+            fi
+
+            # DOWNLOADING PACKAGES
+            for x in $(echo "${apt_packages[@]}" | sort -u); do
+                if ! [[ "$x" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|org.coolstar.safemode|com.saurik.substrate.safemode|firmware|cy+cpu.arm64) ]]; then
+                    if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
+                        Announce "Fetching $x..." -v
+                        echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
+                        Verbose "Fetched $x" "Couldn't Fetch $x" 17
+                    else
+                        Announce "Couldn't find $x on APT"
+                    fi
+                fi
+            done
+
+            while read -r g; do
+                ExtractDEB "$g"
+                sudo -S rm -rf "$g"
+            done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
+        else
+            for i in "${files[@]}"; do
+                if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
+                    ExtractDEB "$i" fetch
+                else
+                    Announce "$i couldn't be found" 18
+                fi
             done
         fi
-
-        # DOWNLOADING PACKAGES
-        for x in $(echo "${apt_packages[@]}" | sort -u); do
-            if ! [[ "$x" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|org.coolstar.safemode|com.saurik.substrate.safemode|firmware|cy+cpu.arm64) ]]; then
-                if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
-                    Announce "Fetching $x..." -v
-                    echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
-                    Verbose "Fetched $x" "Couldn't Fetch $x" 17
-                else
-                    Announce "Couldn't find $x on APT"
-                fi
-            fi
-        done
-
-        while read -r g; do
-            ExtractDEB "$g"
-            sudo -S rm -rf "$g"
-        done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
-        
-    else
-        for i in "${files[@]}"; do
-            if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
-                ExtractDEB "$i" fetch
-            else
-                Announce "$i couldn't be found" 18
-            fi
-        done
     fi
 
-    # MAPPING DYLIBS
-    while read -r i; do dylibs+=("$i"); done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib')
-
     # DYLIB SELECTION
-    for i in "${dylibs[@]}"; do
+    while read -r i; do
         if ! [ -e "${i%.*}.plist" ]; then
             inject+=( "$(basename "$i")" )
             lib_dylibs+=( "$(basename "$i")" )
@@ -601,11 +603,9 @@ if [ -n "${files[*]}" ]; then
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
             idtype="$(ExtractPlistValue Filter "${i%.*}".plist key)"
-
             case "$idtype" in
                 Bundles)
                     ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
-                    
                     if [[ "$identifier" =~ $ipabundleid ]]; then
                         inject+=( "$(basename "$i")" )
                         cp -a "$i" "$rpath"
@@ -623,13 +623,13 @@ if [ -n "${files[*]}" ]; then
                 
             esac
         fi
-    done
+    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib')
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
         if [ -e "$i/Info.plist" ]; then
             cp -a "$i" "$rpath"
-            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16
+            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
             inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
             lib_dylibs+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
         fi
@@ -638,7 +638,7 @@ if [ -n "${files[*]}" ]; then
     # MOVING BUNDLES
     while read -r i; do
         cp -a "$i" "Payload/$appname/"
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
@@ -708,7 +708,7 @@ if [ -n "${files[*]}" ]; then
 
     # INJECTING LIBRARIES
     for i in $(printf "%s\n" "${inject[@]}" | sort -u); do
-        if { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $i ]]; }; then
+        if ! { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $i ]]; }; then
             insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &>/dev/null
             Verbose "Injected $i" "Couldn't inject $i" 24
         fi
