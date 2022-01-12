@@ -40,5 +40,5 @@ Run `update-azule` in your terminal to update Azule
 * [Majd Alfhaily](https://github.com/majd/ipatool) - Wrote ipatool
 * [dlevi309](https://github.com/dlevi309/ipatool-ios) - Ported ipatool to iOS
 * [Saurik](https://github.com/saurik) - Wrote CydiaSubstrate
-* [Sam Bingner and Pwn20wnd](https://github.com/sbingner/substitute) - Wrote a the fork of Substitute, used in Azule
+* [Sam Bingner and Pwn20wnd](https://github.com/sbingner/substitute) - Wrote the the fork of Substitute, used in Azule
 * [JohnCoates](https://github.com/JohnCoates/flexdecrypt) - Wrote Flexdecrypt
