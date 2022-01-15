@@ -28,7 +28,7 @@ A CLI tool used to inject iOS jailbreak tweaks into jailed iOS apps.
 
 For the extended usage instructions, run `azule -h` your terminal
 
-## Updating
+## Updating (Macos/Linux/Windows)
 Run `update-azule` in your terminal to update Azule
 
 ## Credits
