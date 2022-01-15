@@ -19,22 +19,11 @@ esac
 
 # PLATFORM-SPECIFIC VARIABLES
 case "$os" in
-    MacOS)
-        # Add tweak tools to PATH
-        if [ -d "$AZULE/bin/darwin" ] ; then
-            PATH="$AZULE/bin/darwin:$PATH"
-        fi
-    ;;
-
-    Linux)
-        # Add tweak tools to PATH
-        if [ -d "$AZULE/bin/linux" ] ; then
-            PATH="$AZULE/bin/linux:$PATH"
-        fi
-        # Add toolchain to PATH
-        if [ -d "$AZULE/toolchain/bin" ] ; then
-            PATH="$AZULE/toolchain/bin:$PATH"
-        fi
+    MacOS) PATH="$AZULE/bin/darwin:$PATH" ;;
+    iOS) PATH="/usr/lib/Azule/bin:$PATH" ;;
+    Linux) 
+        PATH="$AZULE/bin/linux:$PATH"
+        PATH="$AZULE/toolchain/bin:$PATH" 
     ;;
 esac
 
@@ -175,6 +164,22 @@ Verbose () {
     fi
 }
 
+lib_basename () {
+    if [[ "$1" == *.framework/* ]]; then
+        echo "$(basename "$(dirname "$1")")/$(basename "$1")"
+    else
+        basename "$1"
+    fi
+}
+
+idpath () {
+    if [[ "$1" =~ ${rpath#"$dir"/"$tweakid"/} ]]; then
+        echo "@rpath/$(lib_basename "$1")"
+    else
+        echo "@executable_path/${1#Payload/"$appname"/}"
+    fi
+}
+
 cleanup () {
     rm -rf "$dir"
     cd "$rootdir" || exit
@@ -195,7 +200,7 @@ help () {
     echo "  -o [Path]                    Specify an output directory"
     echo
     echo "Optional Arguements:"
-    echo "  -n [Name]                    Specify an Output Name"
+    echo "  -n [Name]                    Specify a name for the Output iPA"
     echo "  -f [Paths/Bundle IDs]        Specify the files or tweak Bundle IDs to import"
     echo "  -c [Version]                 Set custom version for output ipa"
     echo "  -b [BundleId]                Set custom BundleID for output ipa"
@@ -205,17 +210,18 @@ help () {
     echo "  -s                           Silence Everything But Important Errors"
     echo "  -S                           Fakesigns iPA for use with AppSync"
     echo "  -e                           Removes App Extensions"
-    echo "  -w                           Removes Watch App"
+    echo "  -w                           Don't Remove Watch App"
     echo "  -r                           Skip Encryption Check"
     echo "  -q                           Ignore errors"
+    echo "  -z                           Don't compress .app file before writing"
             
     if [ "$os" == "iOS" ]; then
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
         echo "  -a [Root Password]           Use APT instead of Parcility (Leave Blank for Default Password)"
-        echo "  -m                           Enforce Updating Apps Before Decrypting"
+        echo "  -g                           Force Update Apps"
         echo "  -l                           Don't Update Outdated Apps"
-        echo "  -z                           Don't Update APT Sources (Used With -a)"
-        echo "  -j                           Don't install package dependencies (Used With -a)"
+        echo "  -k                           Don't Update APT Sources (Used With -a)"
+        echo "  -d                           Don't install package dependencies (Used With -a)"
     fi
             
     echo
@@ -225,8 +231,8 @@ help () {
         echo "  azule -n Foo -i com.example.foo -x appleid@example.com password123 -o ~/Foo/ -f com.alaise.example ~/Foo.bundle -a -m"
     fi
 
-    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo -d Foo.dylib"
-    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo -d Foo.dylib"
+    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo"
+    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo"
     echo
     echo "  -h                           Print this help menu"
     echo
@@ -238,7 +244,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
+while getopts an:i:o:c:b:x:f:p:huSewsrqdzgklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -250,7 +256,7 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
     fi
 
     # iOS ONLY
-    if [[ "$args" == @(a|x|l|m|z|j) && "$os" != "iOS" ]]; then
+    if [[ "$args" == @(a|x|l|m|k|d) && "$os" != "iOS" ]]; then
         Announce "-$args is not supported on your platform" 6
     fi
 
@@ -271,17 +277,18 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
         u) remove_uisd=1 && run=1 ;;
         v) verbose=1 ;;
         e) remove_extensions=1 && run=1 ;;
-        w) remove_watchapp=1 && run=1 ;;
+        w) no_remove_watchapp ;;
         S) fakesign=1 && run=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
         q) ignore_errors=1 ;;
+        z) no_zip=1 ;;
 
         # iOS ONLY SWITCHES
-        j) no_recurse=1 ;;
+        d) no_recurse=1 ;;
         l) ignore_outdated=1 ;;
-        m) outdated=1 ;;
-        z) no_apt_update=1 ;;
+        g) outdated=1 ;;
+        k) no_apt_update=1 ;;
         
         h) help ;;
         *) Announce "Invalid option: $*. Run 'azule -h' for help" 6 ;;
@@ -289,29 +296,30 @@ while getopts an:i:o:c:b:x:f:d:p:huSewsrqjmzlv args; do
 done
 
 # VARIABLE CHECK
-if [[ -z "$outdir" || -z "$ipadir" ]] || { [ -z "$run" ] && [[ "$os" != "iOS" || -e "$ipadir" ]]; }; then help; fi
+if [[ -z "$outdir" || -z "$ipadir" ]] || { [ -z "$run" ] && [[ "$os" != "iOS" || -e "$ipadir" ]]; }; then Announce "Insufficient Arguements. Run 'azule -h' for help" 27; fi
 
 # CREATING .TMP DIRECTORIES
 dir="$(mktemp -d)"
 tweakid="$RANDOM"
 mkdir -p "$dir/$tweakid/Tweak"
-Verbose "Temporary Directory $dir/$tweakid/Tweak has been created" "Couldn't create Temporary Directory" 10 -v
+Verbose "Temporary Directory has been created" "Couldn't create Temporary Directory" 10 -v
 cd "$dir/$tweakid" || exit
 
 # INSTALLING UPDATES AND DECRYPTION
-if [ ! -e "$ipadir" ]; then
+if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
     if [ -z "$ignore_outdated" ]; then
         Announce "Checking for App Updates..."
 
         # CHECK IF APP IS INSTALLED
         while read -r i; do
-            if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+            MCMMetadataIdentifier="$(ExtractPlistValue MCMMetadataIdentifier "$i")"
+            if [ "${MCMMetadataIdentifier,,}" = "${ipadir,,}" ]; then
                 info_plist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
                 thinned="$(ExtractPlistValue variantID "$(dirname "$i")/iTunesMetadata.plist")"
                 break
             fi
         done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
-
+        
         # CHECK IF APP IS OUTDATED
         if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
         latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
@@ -336,10 +344,31 @@ if [ ! -e "$ipadir" ]; then
                 read -r -s appleid_password
                 [ -z "$appleid_password" ] && Announce "No Password Provided"
             do true; done; fi
+            printf "\n"
 
             # DOWNLOAD AND INSTALL UPDATES
+            Announce "Downloading $ipadir..."
             ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
-            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
+            t_status="$?"
+            if [[ "$t_status" != "0" ]]; then
+                if [[ "$?" == "1" ]]; then
+                    Announce "2FA Code Required"
+                    if [ -z "$auth_code" ]; then while
+                        printf '[*] Two Factor Authentication Code: '
+                        read -r -s auth_code
+                        [ -z "$auth_code" ] && Announce "No 2FA Code Specified"
+                    do true; done; fi
+                    printf "\n"
+
+                    Announce "Attempting Download Again..."
+                    ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password$auth_code"
+                    status="$?"
+                else
+                    status=1
+                fi
+            fi
+
+            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28 -x
 
             Announce "Installing $(basename "$dir/$tweakid"/*.ipa) ..."
             appinst "$dir/$tweakid"/*.ipa &>/dev/null
@@ -351,11 +380,14 @@ if [ ! -e "$ipadir" ]; then
 
     # DECRYPTION: GET MAIN INFO.PLIST
     while read -r i; do
-        if [ "$(ExtractPlistValue MCMMetadataIdentifier "$i")" = "$ipadir" ]; then
+        MCMMetadataIdentifier="$(ExtractPlistValue MCMMetadataIdentifier "$i")"
+        if [ "${MCMMetadataIdentifier,,}" = "${ipadir,,}" ]; then
             bfplist="$(find "$(dirname "$i")"/*.app/ -maxdepth 1 -name Info.plist)"
             break
         fi
     done < <(find /var/containers/Bundle/Application -name .com.apple.mobile_container_manager.metadata.plist)
+
+    if [ -z "$bfplist" ]; then Announce "App Not Found" 8; fi
 
     # DECRYPT
     mkdir -p Payload
@@ -366,49 +398,46 @@ if [ ! -e "$ipadir" ]; then
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
         if [ -n "$CFBundleExecutable" ] && [ -e "$(dirname "$i")/$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1' && [ "$DTPlatformName" != "watchos" ]; then
             if [ -z "$status" ]; then
+
+                # CHOOSING FOULDECRYPT BINARY
+                ios_version="$(sw_vers | grep "ProductVersion: *" | cut -d: -f2 | xargs)"
+                if [[ "${ios_version%.*}" -lt "14" ]] || [[ ! -e "/.installed_taurine" && ! -e "/.installed_unc0ver" ]]; then
+                    decrypt="fouldecrypt.tfp0"
+                elif [ -e "/.installed_taurine" ]; then
+                    decrypt="fouldecrypt.kernrw"
+                elif [ -e "/.installed_unc0ver" ]; then
+                    decrypt="fouldecrypt.krw"
+                fi
+
                 Announce "Decrypting App..."
             fi
             mkdir -p "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")"
             Announce "Decrypting $CFBundleExecutable..." -v
-            flexdecrypt "$(dirname "$i")/$CFBundleExecutable" --output "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")/$CFBundleExecutable" &>/dev/null
+            "$decrypt" -v "$(dirname "$i")/$CFBundleExecutable" "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")/$CFBundleExecutable" &>/dev/null
             Verbose "Decrypted $CFBundleExecutable" "Couldn't Decrypt $CFBundleExecutable" -v
             status=0
         fi
     done < <(find "$(dirname "$bfplist")" -name "Info.plist")
-    
+
     cp -a -n "$(dirname "$bfplist")" Payload
     Verbose "Finished Decryption" "App Was Not Encrypted" -x
 
-else
-    # EXTRACTING IPA
-    Announce "Extracting iPA..."
-    unzip -q "$ipadir" -d "$dir/$tweakid"
-    Verbose "IPA extracted" "Couldn't extract IPA" 11
-fi
+elif [ -e "$ipadir" ]; then
+    if [ "${ipadir: -4}" == ".ipa" ]; then
 
-# SETTING OUTPUT DIRECTORY AND NAME
-if ! [ "${outdir: -4}" == ".ipa" ]; then
-    if [ -z "$name" ]; then
-        name="$(basename "$ipadir" .ipa)"
-        for i in "${files[@]}"; do
-            name+="+$(basename "$i")"
-        done
+        # EXTRACTING IPA
+        Announce "Extracting iPA..."
+        unzip -q "$ipadir" -d "$dir/$tweakid"
+        Verbose "IPA extracted" "Couldn't extract IPA" 11
+
+    elif [ "${ipadir: -4}" == ".app" ]; then
+        mkdir -p "$dir/$tweakid/Payload"
+        cp -R "$ipadir" "$dir/$tweakid/Payload" &>/dev/null
+        Verbose "Copied App to Work Directory" "Couldn't Copy App to Work Directory" 11
     fi
-    outdir="$outdir/$name.ipa"
+else
+    Announce "Invalid App" 8
 fi
-
-# SHORTEN OUTPUT NAME IF NEEDED
-if [[ ${#outdir} -gt 264 ]]; then
-    outdir="${outdir::${#outdir}-4}"
-    characters_to_remove=$(( ${#outdir} - 264 ))
-    outdir="${outdir::${#outdir}-$characters_to_remove}.ipa"
-    Announce "Shortened File Name"
-fi
-
-# CREATING OUTPUT DIRECTORY
-mkdir -p "$(dirname "$outdir")"
-test -w "$(dirname "$outdir")"
-Verbose "iPA will be written to $outdir" "$outdir is an invalid output path" 9 -v
 
 # REMOVING PLUGINS
 if [ -n "$remove_extensions" ]; then
@@ -421,7 +450,7 @@ if [ -n "$remove_extensions" ]; then
 fi
 
 # REMOVING WATCH APP
-if [ -n "$remove_watchapp" ] || [ -n "$bfplist" ]; then
+if [ -z "$no_remove_watchapp" ]; then
     Announce "Removing Watch App..."
     while read -r i; do
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
@@ -492,8 +521,10 @@ if [ -n "${files[*]}" ]; then
                     ;;
 
                     *)
-                        cp -a "$(eval echo "$string")" Payload/"$appname"
-                        Verbose "Copied $(basename "$(eval echo "$string")") to app directory" "Couldn't Copy $(basename "$i") to app directory" 16
+                        merge=1
+                        mkdir -p "$dir/$tweakid/Custom"
+                        cp -a "$(eval echo "$string")" "$dir/$tweakid/Custom"
+                        Verbose "Copied $(basename "$(eval echo "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 16
                     ;;
                 esac
                 unset string
@@ -533,7 +564,7 @@ if [ -n "${files[*]}" ]; then
             else
                 for j in "${files[@]}"; do
 
-                    # NO OR ### WIP
+                    # NO OR
                     IFS=" " read -ra apt_no_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
 
                     # ONLY OR
@@ -556,25 +587,36 @@ if [ -n "${files[*]}" ]; then
                         fi
 
                         # REMOVE UNNEEDED PACKAGES FROM NO OR
-                        for del in $i; do
-                            apt_no_or=("${apt_no_or[@]/$del}")
+                        for y in $i; do
+                            for x in "${!apt_no_or[@]}"; do
+                                if [ "$y" == "${apt_no_or[x]}" ]; then
+                                    unset "apt_no_or[x]"
+                                    break
+                                fi
+                            done
                         done
                     done
-
                     IFS=" " read -r -a apt_packages <<< "${apt_packages[*]} ${apt_no_or[*]}"
                 done
             fi
 
+            for i in "${!apt_packages[@]}"; do
+                for y in $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances com.ex.substitute org.coolstar.libhooker mobilesubstrate coreutils firmware cy+cpu.arm64 grep "^\w"); do
+                    if [ "$y" == "${apt_packages[i]}" ]; then
+                        unset "apt_packages[i]"
+                        break
+                    fi
+                done
+            done
+
             # DOWNLOADING PACKAGES
             for x in $(echo "${apt_packages[@]}" | sort -u); do
-                if ! [[ "$x" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|org.coolstar.safemode|com.saurik.substrate.safemode|firmware|cy+cpu.arm64) ]]; then
-                    if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
-                        Announce "Fetching $x..." -v
-                        echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
-                        Verbose "Fetched $x" "Couldn't Fetch $x" 17
-                    else
-                        Announce "Couldn't find $x on APT"
-                    fi
+                if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
+                    Announce "Fetching $x..." -v
+                    echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
+                    Verbose "Fetched $x" "Couldn't Fetch $x" 17
+                else
+                    Announce "Couldn't find $x on APT"
                 fi
             done
 
@@ -595,10 +637,17 @@ if [ -n "${files[*]}" ]; then
 
     # DYLIB SELECTION
     while read -r i; do
+        if [[ "$i" =~ $dir/$tweakid/Custom ]]; then
+            copy_path="Payload/$appname/${i#"$dir"/"$tweakid"/Custom/}"
+            mkdir -p "$(dirname "$copy_path")"
+        else
+            copy_path="${rpath#"$dir"/"$tweakid"/Tweak/}/$(basename "$i")"
+        fi
+
         if ! [ -e "${i%.*}.plist" ]; then
-            inject+=( "$(basename "$i")" )
-            lib_dylibs+=( "$(basename "$i")" )
-            cp -a "$i" "$rpath"
+            inject+=( "$copy_path" )
+            lib_dylibs+=( "$copy_path" )
+            cp -a "$i" "$copy_path"
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
@@ -607,56 +656,67 @@ if [ -n "${files[*]}" ]; then
                 Bundles)
                     ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
                     if [[ "$identifier" =~ $ipabundleid ]]; then
-                        inject+=( "$(basename "$i")" )
-                        cp -a "$i" "$rpath"
+                        inject+=( "$copy_path" )
+                        cp -a "$i" "$copy_path"
                         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
                     fi
                 ;;
 
                 Executables)
                     if [[ "$identifier" =~ $(basename "$executable") ]]; then
-                        inject+=( "$(basename "$i")" )
-                        cp -a "$i" "$rpath"
+                        inject+=( "$copy_path" )
+                        cp -a "$i" "$copy_path"
                         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
                     fi
                 ;;
                 
             esac
         fi
-    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.dylib')
+    done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.dylib' 2>/dev/null)
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
-        if [ -e "$i/Info.plist" ]; then
-            cp -a "$i" "$rpath"
-            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-            inject+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
-            lib_dylibs+=( "$(basename "$i")/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+        if [[ "$i" =~ $dir/$tweakid/Custom ]]; then
+            copy_path="Payload/$appname/${i#"$dir"/"$tweakid"/Custom/}"
+            mkdir -p "$(dirname "$copy_path")"
+        else
+            copy_path="${rpath#"$dir"/"$tweakid"/Tweak/}/$(basename "$i")"
         fi
-    done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.framework' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
+
+        if [ ! -e "$copy_path" ]; then
+            if [ -e "$i/Info.plist" ]; then
+                cp -a "$i" "$copy_path"
+                Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+                inject+=( "$copy_path/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+                lib_dylibs+=( "$copy_path/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+            fi
+        fi
+    done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.framework' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
 
     # MOVING BUNDLES
     while read -r i; do
+        rm -rf "Payload/$appname/$(basename "$i")"
         cp -a "$i" "Payload/$appname/"
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
     done < <(find "$dir/$tweakid/Tweak" ! -type l -iname '*.bundle' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*')
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
-        ldid -r -M "$rpath/$i" &>/dev/null
-        Verbose "Codesign stripped from $i" "Couldn't strip codesign from $i" 19 -v
 
-        for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1 | sort -u); do
+        ldid -r -M "$i" &>/dev/null
+        Verbose "Codesign stripped from $(lib_basename "$i")" "Couldn't strip codesign from $(lib_basename "$i")" 19 -v
+
+        for l in $(otool -L "$i" | cut -d ' ' -f1); do
             for x in "${inject[@]}"; do
-                if [[ "$l" =~ $x ]]; then
-                    if [[ "$l" =~ $i ]]; then
-                        install_name_tool -id @rpath/"$i" "$rpath/$i" &>/dev/null
+                if [[ "$l" =~ $(lib_basename "$x") ]]; then ##!
+                    if [[ "$l" =~ $(lib_basename "$i") ]]; then
+                        install_name_tool -id "$(idpath "$i")" "$i" &>/dev/null
                         tid=$(( tid + $? ))
                         break
                     else
-                        install_name_tool -change "$l" @rpath/"$x" "$rpath/$i" &>/dev/null
-                        if ! [[ "${linked[*]}" =~ $x ]]; then linked+=( "$x" ); fi
+                        install_name_tool -change "$l" "$(idpath "$i")" "$i" &>/dev/null
                         tlnk=$(( tlnk + $? ))
+                        if ! [[ "${linked[*]}" =~ $x ]]; then linked+=( "$x" ); fi
                         break
                     fi
                 fi
@@ -679,7 +739,7 @@ if [ -n "${files[*]}" ]; then
     if [ -n "${inject[*]}" ]; then
         for hookinglibrary in "libsubstitute.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
             for i in "${inject[@]}"; do
-                for l in $(otool -L "$rpath/$i" | cut -d ' ' -f1); do
+                for l in $(otool -L "$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
                         if [ ! -e "$rpath/$hookinglibrary" ]; then
                             if [[ "$hookinglibrary" =~ .framework ]]; then
@@ -689,12 +749,13 @@ if [ -n "${files[*]}" ]; then
                             fi
 
                             if [ "$os" == "iOS" ]; then
-                                cp -a "/var/mobile/Azule/lib/$hl_file" "$rpath"
+                                cp -a "/usr/lib/Azule/lib/$hl_file" "$rpath"
                             elif ! cp -a "$AZULE/lib/$hl_file" "$rpath" &>/dev/null; then
                                 Announce "$hl_file not downloaded, please run setup-azule." 22
                             fi
                         fi
-                        install_name_tool -change "$l" @rpath/"$hookinglibrary" "$rpath/$i" &>/dev/null
+
+                        install_name_tool -change "$l" @rpath/"$hookinglibrary" "$i" &>/dev/null
                         status=$(( status + $? ))
                         break
                     fi
@@ -708,11 +769,17 @@ if [ -n "${files[*]}" ]; then
 
     # INJECTING LIBRARIES
     for i in $(printf "%s\n" "${inject[@]}" | sort -u); do
-        if ! { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $i ]]; }; then
-            insert_dylib --inplace --weak --no-strip-codesig @rpath/"$i" "$executable" &>/dev/null
-            Verbose "Injected $i" "Couldn't inject $i" 24
+        id_path="$(idpath "$i")"
+        if ! { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; }; then
+            insert_dylib --inplace --weak --no-strip-codesig "$id_path" "$executable" &>/dev/null
+            Verbose "Injected $(lib_basename "$i")" "Couldn't inject $(lib_basename "$i")" 24
         fi
     done
+
+    # MERGING FOLDERS
+    if [ -n "$merge" ]; then
+        cp -R "$dir/$tweakid"/Custom/* "Payload/$appname"
+    fi
 fi
 
 # REMOVING UISUPPORTEDDEVICES
@@ -758,15 +825,57 @@ if [ -n "$fakesign" ]; then
     Announce "Fakesigning iPA..."
         while read -r i; do
             ldid -s "$i" &>/dev/null
-            Verbose "Fakesigned $(basename "$i")" "Couldn't Fakesign $(basename "$i")" -v 
+            Verbose "Fakesigned $(lib_basename "$i")" "Couldn't Fakesign $(lib_basename "$i")" -v
         done < <(find Payload -type f ! -name "*.*" ! -name "CodeResources" ! -name PkgInfo)
     Verbose "Finished Fakesigning" "Couldn't Fakesign App"
 fi
 
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
-    Announce "Generating iPA..."
+
+    # SETTING OUTPUT DIRECTORY AND NAME
+    if ! [ "${outdir: -4}" == ".ipa" ]; then
+        if [ -n "$no_zip" ]; then
+            if [ -z "$name" ]; then
+                outdir="$outdir/$appname"
+            else
+                if [ "$name" == "*.app" ]; then
+                    outdir="$outdir/$name"
+                else
+                    outdir="$outdir/$name.app"
+                fi
+            fi
+        else
+            if [ -z "$name" ]; then
+                name="$(basename "$ipadir" .ipa)"
+                for i in "${files[@]}"; do
+                    name+="+$(basename "$i")"
+                done
+            fi
+            outdir="$outdir/$name.ipa"
+        fi
+    fi
+
+    # SHORTEN OUTPUT NAME IF NEEDED
+    if [[ ${#outdir} -gt 264 ]]; then
+        outdir="${outdir::${#outdir}-4}"
+        characters_to_remove=$(( ${#outdir} - 264 ))
+        outdir="${outdir::${#outdir}-$characters_to_remove}.ipa"
+        Announce "Shortened File Name"
+    fi
+
+    # CREATING OUTPUT DIRECTORY
+    mkdir -p "$(dirname "$outdir")"
+
     if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
-    zip -rq "$outdir" Payload
+    if [ -n "$no_zip" ]; then
+        Announce "Generating App..."
+        mv Payload/"$appname" "$outdir" 
+        status="$?"
+    else
+        Announce "Generating iPA..."
+        zip -rq "$outdir" Payload
+        status="$?"
+    fi
     Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25
 fi
