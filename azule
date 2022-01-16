@@ -350,22 +350,20 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
             Announce "Downloading $ipadir..."
             ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
             t_status="$?"
-            if [[ "$t_status" != "0" ]]; then
-                if [[ "$?" == "1" ]]; then
-                    Announce "2FA Code Required"
-                    if [ -z "$auth_code" ]; then while
-                        printf '[*] Two Factor Authentication Code: '
-                        read -r -s auth_code
-                        [ -z "$auth_code" ] && Announce "No 2FA Code Specified"
-                    do true; done; fi
-                    printf "\n"
+            if [ "$t_status" == "1" ]; then
+                Announce "2FA Code Required"
+                if [ -z "$auth_code" ]; then while
+                    printf '[*] Two Factor Authentication Code: '
+                    read -r -s auth_code
+                    [ -z "$auth_code" ] && Announce "No 2FA Code Specified"
+                do true; done; fi
+                printf "\n"
 
-                    Announce "Attempting Download Again..."
-                    ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password$auth_code"
-                    status="$?"
-                else
-                    status=1
-                fi
+                Announce "Attempting Download Again..."
+                ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password$auth_code"
+                status="$?"
+            elif [ "$t_status" != "0" ]; then 
+                status=1
             fi
 
             Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28 -x
