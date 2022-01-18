@@ -22,7 +22,7 @@ function update-azule() {
                 echo
                 echo "Options:"
                 echo "  -f     Forcefully update Azule, causing all local changes to be lost."
-                echo "  -r     Redownload the latest mobilesubstrate and linux toolchains."
+                echo "  -r     Redownload the latest hooking libraries and linux toolchains."
                 echo "  -h     Print this help menu."
                 exit 0
             ;;
@@ -74,38 +74,33 @@ function setup-azule() {
         ;;
     esac
 
-    if [ ! -d "$AZULE/lib/CydiaSubstrate.framework" ]; then
+    if [ ! -d "$AZULE/lib/CydiaSubstrate.framework" ] || [ ! -e "$AZULE/lib/libsubstitute.dylib" ] ; then
         mkdir -p "$AZULE/lib"
-        echo "Downloading CydiaSubstrate..."
+        echo "Downloading Hooking Libraries..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
         curl -sSL https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
         ar -x "substrate.deb"
         tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
-        rsync -a "$TMP"/libsubstrate.dylib "$AZULE/lib/libsubstrate.dylib"
-        echo "Downloaded libsubstrate.dylib"
-        mv libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
         mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
         mv CydiaSubstrate.framework "$AZULE"/lib/CydiaSubstrate.framework
         cd || exit
         rm -rf "$TMP"
         plutil -convert binary1 "$AZULE/lib/CydiaSubstrate.framework/Info.plist"
-        echo "Downloaded CydiaSubstrate.framework"
-    fi
 
-    if [ ! -e "$AZULE/lib/libsubstitute.dylib" ]; then
-        TMP="$(mktemp -d)"
-        cd "$TMP" || exit 
-        echo "Downloading Substitute..."
-        curl -sS https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
-        ar -x "substitute.deb"
-        tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
-        mv libsubstitute.dylib "$AZULE/lib/libsubstitute.dylib"
-        echo "Downloaded Substitute"
+        TMP=$(mktemp -d)
+        cd "$TMP" || exit
+        curl -sSL https://repo.theodyssey.dev/debs/org.coolstar.libhooker_1.6.3_iphoneos-arm.deb -o hl.deb
+        ar -x "hl.deb"
+        tar -xf data.tar.xz
+
+        mv usr/lib/libsubstrate.dylib "$AZULE"/lib/CydiaSubstrate.framework/CydiaSubstrate
+        mv usr/lib/libsubstitute.dylib "$AZULE/lib/libsubstitute.dylib"
         cd || exit
         rm -rf "$TMP"
+        echo "Downloaded Hooking Libraries"
     fi
-
+    
     cd "$currentdir" || exit
 }

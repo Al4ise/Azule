@@ -213,6 +213,8 @@ help () {
     echo "  -w                           Don't Remove Watch App"
     echo "  -r                           Skip Encryption Check"
     echo "  -q                           Ignore errors"
+    echo "  -m                           Force CydiaSubstrate.framework as a hooking library"
+    echo "  -j                           Force libsubstitute.dylib as a hooking library"    
     echo "  -z                           Don't compress .app file before writing"
             
     if [ "$os" == "iOS" ]; then
@@ -244,7 +246,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:p:huSewsrqdzgklv args; do
+while getopts an:i:o:c:b:x:f:p:huSewsrmjqdzgklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -256,7 +258,7 @@ while getopts an:i:o:c:b:x:f:p:huSewsrqdzgklv args; do
     fi
 
     # iOS ONLY
-    if [[ "$args" == @(a|x|l|m|k|d) && "$os" != "iOS" ]]; then
+    if [[ "$args" == @(a|x|l|k|d|g) && "$os" != "iOS" ]]; then
         Announce "-$args is not supported on your platform" 6
     fi
 
@@ -283,6 +285,8 @@ while getopts an:i:o:c:b:x:f:p:huSewsrqdzgklv args; do
         s) silent_run=1 ;;
         q) ignore_errors=1 ;;
         z) no_zip=1 ;;
+        j) force_hl="libsubstitute.dylib" ;;
+        m) force_hl="CydiaSubstrate.framework/CydiaSubstrate" ;;
 
         # iOS ONLY SWITCHES
         d) no_recurse=1 ;;
@@ -706,13 +710,13 @@ if [ -n "${files[*]}" ]; then
 
         for l in $(otool -L "$i" | cut -d ' ' -f1); do
             for x in "${inject[@]}"; do
-                if [[ "$l" =~ $(lib_basename "$x") ]]; then ##!
+                if [[ "$l" =~ $(lib_basename "$x") ]]; then
                     if [[ "$l" =~ $(lib_basename "$i") ]]; then
                         install_name_tool -id "$(idpath "$i")" "$i" &>/dev/null
                         tid=$(( tid + $? ))
                         break
                     else
-                        install_name_tool -change "$l" "$(idpath "$i")" "$i" &>/dev/null
+                        install_name_tool -change "$l" "$(idpath "$x")" "$i" &>/dev/null
                         tlnk=$(( tlnk + $? ))
                         if ! [[ "${linked[*]}" =~ $x ]]; then linked+=( "$x" ); fi
                         break
@@ -740,10 +744,16 @@ if [ -n "${files[*]}" ]; then
                 for l in $(otool -L "$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
                         if [ ! -e "$rpath/$hookinglibrary" ]; then
-                            if [[ "$hookinglibrary" =~ .framework ]]; then
-                                hl_file="$(dirname "$hookinglibrary")"
+                            if [ -n "$force_hl" ]; then
+                                hl="$force_hl"
                             else
-                                hl_file="$hookinglibrary"
+                                hl="$hookinglibrary"
+                            fi
+
+                            if [[ "$hl" =~ .framework ]]; then
+                                hl_file="$(dirname "$hl")"
+                            else
+                                hl_file="$hl"
                             fi
 
                             if [ "$os" == "iOS" ]; then
@@ -753,7 +763,7 @@ if [ -n "${files[*]}" ]; then
                             fi
                         fi
 
-                        install_name_tool -change "$l" @rpath/"$hookinglibrary" "$i" &>/dev/null
+                        install_name_tool -change "$l" @rpath/"$hl" "$i" &>/dev/null
                         status=$(( status + $? ))
                         break
                     fi
@@ -761,7 +771,7 @@ if [ -n "${files[*]}" ]; then
             done
         done
         if [ -n "$status" ]; then
-            Verbose "Linked $hookinglibrary" "Failed injecting $hookinglibrary in $status file(s)" 23 -x
+            Verbose "Linked $hl" "Failed injecting $hl in $status file(s)" 23 -x
         fi
     fi
 
