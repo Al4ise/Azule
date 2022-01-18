@@ -671,7 +671,6 @@ if [ -n "${files[*]}" ]; then
                         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
                     fi
                 ;;
-                
             esac
         fi
     done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.dylib' 2>/dev/null)
