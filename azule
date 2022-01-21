@@ -279,7 +279,7 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdzgklv args; do
         u) remove_uisd=1 && run=1 ;;
         v) verbose=1 ;;
         e) remove_extensions=1 && run=1 ;;
-        w) no_remove_watchapp ;;
+        w) no_remove_watchapp=1 ;;
         S) fakesign=1 && run=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
