@@ -193,31 +193,36 @@ cleanup () {
 
 help () {
     echo
-    echo "Usage: azule [arguements]"
+    echo "Usage: azule [essential arguements] [modifiers]"
     echo
-    echo "Mandatory Arguements:"
+    echo "Essential Arguements:"
     echo "  -i [Path/BundleID]           Specify the the IPA to patch"
     echo "  -o [Path]                    Specify an output directory"
     echo
-    echo "Optional Arguements:"
-    echo "  -n [Name]                    Specify a name for the Output iPA"
+    echo "Modifiers:"
     echo "  -f [Paths/Bundle IDs]        Specify the files or tweak Bundle IDs to import"
     echo "  -c [Version]                 Set custom version for output ipa"
     echo "  -b [BundleId]                Set custom BundleID for output ipa"
     echo "  -p [Name]                    Set custom Display Name for output ipa"
     echo "  -u                           Remove UISupportedDevices from app"
+    echo "  -S                           Fakesigns iPA for use with AppSync"
+    echo "  -e                           Removes App Extensions" 
+    echo
+    echo "Others:"
+    echo "  -n [Name]                    Specify a name for the Output iPA"
     echo "  -v                           Enable Verbose Mode"
     echo "  -s                           Silence Everything But Important Errors"
-    echo "  -S                           Fakesigns iPA for use with AppSync"
-    echo "  -e                           Removes App Extensions"
     echo "  -w                           Don't Remove Watch App"
     echo "  -r                           Skip Encryption Check"
+    echo "  -y                           Insert dylibs as weak"   
     echo "  -q                           Ignore errors"
     echo "  -m                           Force CydiaSubstrate.framework as a hooking library"
-    echo "  -j                           Force libsubstitute.dylib as a hooking library"    
+    echo "  -j                           Force libsubstitute.dylib as a hooking library"   
     echo "  -z                           Don't compress .app file before writing"
-            
+
     if [ "$os" == "iOS" ]; then
+        echo "iOS Only:"
+        echo
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
         echo "  -a [Root Password]           Use APT instead of Parcility (Leave Blank for Default Password)"
         echo "  -g                           Force Update Apps"
@@ -246,7 +251,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:p:huSewsrmjqdzgklv args; do
+while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -265,34 +270,35 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdzgklv args; do
     case "$args" in
 
         # STUFF WITH PARAMETERS
-        n) name="${tmp[*]}" ;;
+        a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
         b) bundle="${tmp[*]}" && run=1 ;;
-        p) displayname="${tmp[*]}" && run=1 ;;
-        i) ipadir="$(eval echo "${tmp[*]}")" ;;
-        o) outdir="$(eval echo "${tmp[*]}" | sed "s|\.|$rootdir|")" ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) IFS=" " read -r -a files <<< "${tmp[*]}" && run=1 ;;
-        a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
+        i) ipadir="$(eval echo "${tmp[*]}")" ;;
+        n) name="${tmp[*]}" ;;
+        o) outdir="$(eval echo "${tmp[*]}" | sed "s|\.|$rootdir|")" ;;
+        p) displayname="${tmp[*]}" && run=1 ;;
         x) appleid="${tmp[0]}" && unset "tmp[0]" && appleid_password="${tmp[*]}" ;;
 
         # SWITCHES
-        u) remove_uisd=1 && run=1 ;;
-        v) verbose=1 ;;
         e) remove_extensions=1 && run=1 ;;
-        w) no_remove_watchapp ;;
-        S) fakesign=1 && run=1 ;;
-        r) ignore_encrypted=1 ;;
-        s) silent_run=1 ;;
-        q) ignore_errors=1 ;;
-        z) no_zip=1 ;;
         j) force_hl="libsubstitute.dylib" ;;
         m) force_hl="CydiaSubstrate.framework/CydiaSubstrate" ;;
+        q) ignore_errors=1 ;;
+        r) ignore_encrypted=1 ;;
+        s) silent_run=1 ;;
+        S) fakesign=1 && run=1 ;;
+        u) remove_uisd=1 && run=1 ;;
+        v) verbose=1 ;;
+        w) no_remove_watchapp=1 ;;
+        y) weak=1 ;;
+        z) no_zip=1 ;;
 
         # iOS ONLY SWITCHES
         d) no_recurse=1 ;;
-        l) ignore_outdated=1 ;;
         g) outdated=1 ;;
         k) no_apt_update=1 ;;
+        l) ignore_outdated=1 ;;
         
         h) help ;;
         *) Announce "Invalid option: $*. Run 'azule -h' for help" 6 ;;
@@ -491,7 +497,7 @@ if [ -z "$ignore_encrypted" ]; then
     while read -r i; do
         CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
         if [ -n "$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1'; then
-            if [[ "$(dirname "$i")/$CFBundleExecutable" =~ .app/Frameworks || "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]]; then
+            if [ "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]; then
                 Announce "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted" 14
             fi
         fi
@@ -562,7 +568,7 @@ if [ -n "${files[*]}" ]; then
             while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
 
             if [ -n "$no_recurse" ]; then
-                apt_packages=( "${files[@]}" )
+                IFS=" " read -r -a apt_packages <<< "${files[*]}"
             else
                 for j in "${files[@]}"; do
 
@@ -603,10 +609,9 @@ if [ -n "${files[*]}" ]; then
             fi
 
             for i in "${!apt_packages[@]}"; do
-                for y in $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances com.ex.substitute org.coolstar.libhooker mobilesubstrate coreutils firmware cy+cpu.arm64 grep "^\w"); do
+                for y in $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances com.ex.substitute org.coolstar.libhooker mobilesubstrate coreutils firmware cy+cpu.arm64 | grep "^\w"); do
                     if [ "$y" == "${apt_packages[i]}" ]; then
                         unset "apt_packages[i]"
-                        break
                     fi
                 done
             done
@@ -778,8 +783,13 @@ if [ -n "${files[*]}" ]; then
     for i in $(printf "%s\n" "${inject[@]}" | sort -u); do
         id_path="$(idpath "$i")"
         if ! { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; }; then
-            insert_dylib --inplace --weak --no-strip-codesig "$id_path" "$executable" &>/dev/null
-            Verbose "Injected $(lib_basename "$i")" "Couldn't inject $(lib_basename "$i")" 24
+            if [ -n "$weak" ]; then 
+                insert_dylib --inplace --weak --no-strip-codesig "$id_path" "$executable" &>/dev/null
+                Verbose "Injected $(lib_basename "$i") as weak" "Couldn't inject $(lib_basename "$i")" 24
+            else
+                insert_dylib --inplace --no-strip-codesig "$id_path" "$executable" &>/dev/null
+                Verbose "Injected $(lib_basename "$i")" "Couldn't inject $(lib_basename "$i")" 24
+            fi
         fi
     done
 
