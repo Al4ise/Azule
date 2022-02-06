@@ -192,8 +192,16 @@ cleanup () {
 }
 
 help () {
-    echo
     echo "Usage: azule [essential arguements] [modifiers]"
+    echo
+    echo "Examples:"
+
+    if [ "$os" == "iOS" ]; then
+        echo "  azule -n Foo -i com.example.foo -x appleid@example.com password123 -o ~/Foo/ -f com.alaise.example ~/Foo.bundle -a -m"
+    fi
+
+    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo"
+    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo"
     echo
     echo "Essential Arguements:"
     echo "  -i [Path/BundleID]           Specify the the IPA to patch"
@@ -219,10 +227,11 @@ help () {
     echo "  -m                           Force CydiaSubstrate.framework as a hooking library"
     echo "  -j                           Force libsubstitute.dylib as a hooking library"   
     echo "  -z                           Don't compress .app file before writing"
+    echo "  -h                           Print this help menu"
 
     if [ "$os" == "iOS" ]; then
-        echo "iOS Only:"
         echo
+        echo "iOS Only:"
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
         echo "  -a [Root Password]           Use APT instead of Parcility (Leave Blank for Default Password)"
         echo "  -g                           Force Update Apps"
@@ -230,18 +239,6 @@ help () {
         echo "  -k                           Don't Update APT Sources (Used With -a)"
         echo "  -d                           Don't install package dependencies (Used With -a)"
     fi
-            
-    echo
-    echo "Examples:"
-
-    if [ "$os" == "iOS" ]; then
-        echo "  azule -n Foo -i com.example.foo -x appleid@example.com password123 -o ~/Foo/ -f com.alaise.example ~/Foo.bundle -a -m"
-    fi
-
-    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f com.bar.foo"
-    echo "  azule -n Foo -i ~/Foo.ipa -o ~/Foo/ -f ~/Foo.framework com.bar.foo"
-    echo
-    echo "  -h                           Print this help menu"
     echo
     cleanup
 }
@@ -405,7 +402,7 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
         CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
         if [ -n "$CFBundleExecutable" ] && [ -e "$(dirname "$i")/$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1' && [ "$DTPlatformName" != "watchos" ]; then
-            if [ -z "$status" ]; then
+            if [ -z "$dexec" ]; then
 
                 # CHOOSING FOULDECRYPT BINARY
                 ios_version="$(sw_vers | grep "ProductVersion: *" | cut -d: -f2 | xargs)"
@@ -416,19 +413,26 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
                 elif [ -e "/.installed_unc0ver" ]; then
                     decrypt="fouldecrypt.krw"
                 fi
-
+                
+                Announce "Chose $decrypt as decryptor" -v
                 Announce "Decrypting App..."
             fi
+
             mkdir -p "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")"
             Announce "Decrypting $CFBundleExecutable..." -v
             "$decrypt" -v "$(dirname "$i")/$CFBundleExecutable" "Payload/$(dirname "$i" | sed "s|^.*$appname|$appname|")/$CFBundleExecutable" &>/dev/null
-            Verbose "Decrypted $CFBundleExecutable" "Couldn't Decrypt $CFBundleExecutable" -v
-            status=0
+            status="$?"
+            if [ "$status" != "0" ]; then
+                qv=$(( qv + 1 ))
+            fi
+            Verbose "Decrypted $CFBundleExecutable" "Couldn't Decrypt $CFBundleExecutable" -v -x
+            dexec=1
         fi
     done < <(find "$(dirname "$bfplist")" -name "Info.plist")
 
     cp -a -n "$(dirname "$bfplist")" Payload
-    Verbose "Finished Decryption" "App Was Not Encrypted" -x
+    status="$qv"
+    Verbose "Finished Decryption" "Could Not decrypt $qv files. This may cause problems later on" -x
 
 elif [ -e "$ipadir" ]; then
     if [ "${ipadir: -4}" == ".ipa" ]; then
