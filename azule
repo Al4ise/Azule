@@ -182,12 +182,11 @@ expand() {
         else
             process_var="$(echo "$(pwd)/$process_var" | xargs)"
         fi
-    fi
-
-    if [ -e "$process_var" ]; then
-        echo "$process_var"
-    else
-        echo "$1"
+        if [ -e "$process_var" ]; then
+            echo "$process_var"
+        else
+            echo "$1"
+        fi
     fi
     cd "$current_dir" || exit
 }
