@@ -175,20 +175,20 @@ expand() {
     if [ -d "$1" ]; then
         (cd "$1" || exit; pwd)
     else
-        if ! [[ "$process_var" = /* ]]; then
-            if [[ "$process_var" == */* ]]; then
-                process_var="$(cd "${process_var%/*}" || exit; pwd)/${process_var##*/}"
-            else
-                process_var="$(pwd)/$process_var"
-            fi
+        if [[ "$process_var" = /* ]]; then
+            process_var="$(echo "$process_var" | xargs)"
+        elif [[ "$process_var" == */* ]]; then
+            process_var="$(echo "$(cd "${process_var%/*}" || exit; pwd)/${process_var##*/}" | xargs)"
+        else
+            process_var="$(echo "$(pwd)/$process_var" | xargs)"
         fi
     fi
 
-    if [ ! -e "$process_var" ]; then
-        process_var="$1"
+    if [ -e "$process_var" ]; then
+        echo "$process_var"
+    else
+        echo "$1"
     fi
-    echo "$process_var" | xargs
-
     cd "$current_dir" || exit
 }
 
