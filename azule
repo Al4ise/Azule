@@ -164,6 +164,30 @@ Verbose () {
     fi
 }
 
+expand() {
+    if [ -z "$(echo "$1" | xargs)" ]; then
+        return 0
+    fi
+
+    current_dir="$PWD"
+    cd "$rootdir" || exit
+    process_var="$(echo "$1" | xargs)"
+    if [ -d "$1" ]; then
+        # dir
+        (cd "$1" || exit; pwd)
+    else
+        if [[ "$process_var" = /* ]]; then
+            echo "$process_var" | xargs
+        elif [[ "$process_var" == */* ]]; then
+            echo "$(cd "${process_var%/*}" || exit; pwd)/${process_var##*/}" | xargs
+        else
+            echo "$(pwd)/$process_var" | xargs
+        fi
+    fi
+
+    cd "$current_dir" || exit
+}
+
 lib_basename () {
     if [[ "$1" == *.framework/* ]]; then
         echo "$(basename "$(dirname "$1")")/$(basename "$1")"
@@ -271,9 +295,9 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
         b) bundle="${tmp[*]}" && run=1 ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) IFS=" " read -r -a files <<< "${tmp[*]}" && run=1 ;;
-        i) ipadir="$(eval echo "${tmp[*]}")" ;;
+        i) ipadir="$(expand "${tmp[*]}")" ;;
         n) name="${tmp[*]}" ;;
-        o) outdir="$(eval echo "${tmp[*]}" | sed "s|\.|$rootdir|")" ;;
+        o) outdir="$(expand "${tmp[*]}")" ;;
         p) displayname="${tmp[*]}" && run=1 ;;
         x) appleid="${tmp[0]}" && unset "tmp[0]" && appleid_password="${tmp[*]}" ;;
 
@@ -303,7 +327,15 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
 done
 
 # VARIABLE CHECK
-if [[ -z "$outdir" || -z "$ipadir" ]] || { [ -z "$run" ] && [[ "$os" != "iOS" || -e "$ipadir" ]]; }; then Announce "Insufficient Arguements. Run 'azule -h' for help" 27; fi
+if [ -z "$outdir" ]; then
+    Announce "No Output Directory Specified. Run 'azule -h' for help" 27
+elif [ -z "$ipadir" ]; then
+    Announce "No iPA Specified. Run 'azule -h' for help" 27
+elif [[ -z "$run" ]]; then
+    if [ "$os" != "iOS" ] || [ -e "$ipadir" ]; then
+        Announce "No Modifier Specified. Run 'azule -h' for help" 27
+    fi
+fi
 
 # CREATING .TMP DIRECTORIES
 dir="$(mktemp -d)"
@@ -518,25 +550,25 @@ if [ -n "${files[*]}" ]; then
         while [[ "$x" -le "$max" ]]; do
             indexes+=( "$x" )
             string+=" ${files[x]}"
-            if [ -e "$(eval echo "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(eval echo "$string ${files[x+1]}")" ]]; then
+            if [ -e "$(expand "$string")" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
 
-                Announce "$(basename "$string") will be imported" -v
+                Announce "$(basename "$string" | xargs) will be imported" -v
 
-                case "$(eval echo "$string")" in
+                case "$(expand "$string")" in
                     *.deb) 
-                        ExtractDEB "$(eval echo "$string")"
+                        ExtractDEB "$(expand "$string")"
                     ;;
                     
                     *.dylib|*.framework)
-                        cp -a "$(eval echo "$string")" "$dir/$tweakid/Tweak"
-                        Verbose "Copied $(basename "$(eval echo "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v
+                        cp -a "$(expand "$string")" "$dir/$tweakid/Tweak"
+                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 15 -v
                     ;;
 
                     *)
                         merge=1
                         mkdir -p "$dir/$tweakid/Custom"
-                        cp -a "$(eval echo "$string")" "$dir/$tweakid/Custom"
-                        Verbose "Copied $(basename "$(eval echo "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 16
+                        cp -a "$(expand "$string")" "$dir/$tweakid/Custom"
+                        Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 16
                     ;;
                 esac
                 unset string
@@ -748,6 +780,7 @@ if [ -n "${files[*]}" ]; then
     # INJECT HOOKING LIBRARY
     if [ -n "${inject[*]}" ]; then
         for hookinglibrary in "libsubstitute.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
+            unset "hl"
             for i in "${inject[@]}"; do
                 for l in $(otool -L "$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
@@ -777,10 +810,10 @@ if [ -n "${files[*]}" ]; then
                     fi
                 done
             done
+            if [ -n "$hl" ]; then
+                Verbose "Linked $hl" "Failed injecting $hl in $status file(s)" 23 -x
+            fi
         done
-        if [ -n "$status" ]; then
-            Verbose "Linked $hl" "Failed injecting $hl in $status file(s)" 23 -x
-        fi
     fi
 
     # INJECTING LIBRARIES
