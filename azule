@@ -697,25 +697,29 @@ if [ -n "${files[*]}" ]; then
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
-            idtype="$(ExtractPlistValue Filter "${i%.*}".plist key)"
-            case "$idtype" in
-                Bundles)
-                    ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
-                    if [[ "$identifier" =~ $ipabundleid ]]; then
-                        inject+=( "$copy_path" )
-                        cp -a "$i" "$copy_path"
-                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-                    fi
-                ;;
+            IFS=" " read -ra idtypes <<< "$(ExtractPlistValue Filter "${i%.*}".plist key)"
+            for idtype in "${idtypes[@]}"; do
+                case "$idtype" in
+                    Bundles)
+                        ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
+                        if [[ "$identifier" =~ $ipabundleid ]]; then
+                            inject+=( "$copy_path" )
+                            cp -a "$i" "$copy_path"
+                            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+                            break
+                        fi
+                    ;;
 
-                Executables)
-                    if [[ "$identifier" =~ $(basename "$executable") ]]; then
-                        inject+=( "$copy_path" )
-                        cp -a "$i" "$copy_path"
-                        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-                    fi
-                ;;
-            esac
+                    Executables)
+                        if [[ "$identifier" =~ $(basename "$executable") ]]; then
+                            inject+=( "$copy_path" )
+                            cp -a "$i" "$copy_path"
+                            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+                            break
+                        fi
+                    ;;
+                esac
+            done
         fi
     done < <(find "$dir/$tweakid/Tweak" "$dir/$tweakid/Custom" ! -type l -iname '*.dylib' 2>/dev/null)
 
@@ -922,7 +926,7 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
     fi
 
     # CREATING OUTPUT DIRECTORY
-    mkdir -p "$(dirname "$outdir")"
+    mkdir -p "$(dirname "$(expand "$outdir")")"
 
     if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
     if [ -n "$no_zip" ]; then
