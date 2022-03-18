@@ -52,9 +52,8 @@ case "$os" in
 
         ExtractDEB () {
             if [ "$2" = "fetch" ]; then
-                Announce "Fetching $1..." -v
-                curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" 1
+                FetchDEB "$1"
+
                 Announce "Extracting $1..."
                 dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
                 Verbose "Extracted $1.deb" "Couldn't extract $1.deb" 2
@@ -89,9 +88,7 @@ case "$os" in
             TMP=$(mktemp -d)
             cd "$TMP" || exit
             if [ "$2" = "fetch" ]; then
-                Announce "Fetching $1..." -v
-                curl -sSL "$(curl -sS https://api.parcility.co/db/package/"$1" | jq -r '.data.repo.url + .data.builds[-1].Filename')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" 1 "$TMP"
+                FetchDEB "$1"
                 ar -x "tweak.deb"
                 status="$?"
                 Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v "$TMP" -x
@@ -104,7 +101,6 @@ case "$os" in
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5 "$TMP"
             cd "$origin_dir" || exit
-            unset origin_dir
             rm -rf "$TMP"
         }
     ;;
@@ -218,6 +214,33 @@ cleanup () {
     fi
 }
 
+FetchDEB () {
+    Announce "Fetching $1..." -v
+    canister="$(curl -sSL "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
+    repo="$(echo "$canister" | jq -r '.data[].repository.uri')"
+    clatestv="$(echo "$canister" | jq -r '.data[].latestVersion')"
+
+    while read -r line; do
+        if [[ $line == "" ]]; then ((g++)) && s=1; fi
+        if [[ $s == 0 ]]; then
+            clusters[$g]="${clusters[$g]}"$'\n'"$line"
+        else  
+            clusters[$g]="$line"
+            s=0 
+        fi
+    done < <(curl -sS "$repo/Packages")
+
+    for g in "${clusters[@]}"; do
+        if [[ "$g" =~ Package:.*$1 ]]; then
+            if [[ "$g" =~ Version:.*$clatestv ]]; then
+                curl -sSL "$repo/$(echo "$g" | grep 'Filename:' | sed 's/^.*: //')" -o "tweak.deb"
+                Verbose "Fetched $1" "Couldn't fetch $1" 1 "$TMP"
+                break
+            fi
+        fi
+    done
+}
+
 help () {
     echo "Usage: azule [essential arguements] [modifiers]"
     echo
@@ -260,7 +283,7 @@ help () {
         echo
         echo "iOS Only:"
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
-        echo "  -a [Root Password]           Use APT instead of Parcility (Leave Blank for Default Password)"
+        echo "  -a [Root Password]           Use APT instead of Canister (Leave Blank for Default Password)"
         echo "  -g                           Force Update Apps"
         echo "  -l                           Don't Update Outdated Apps"
         echo "  -k                           Don't Update APT Sources (Used With -a)"
@@ -672,7 +695,7 @@ if [ -n "${files[*]}" ]; then
             done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
         else
             for i in "${files[@]}"; do
-                if [ "$(curl -sS https://api.parcility.co/db/package/"$i" | jq -r .status)" = "true" ]; then
+                if [ -n "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$i" | jq -r .data[])" ]; then
                     ExtractDEB "$i" fetch
                 else
                     Announce "$i couldn't be found" 18
