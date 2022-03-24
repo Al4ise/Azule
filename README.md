@@ -6,7 +6,7 @@ A CLI tool used to inject iOS jailbreak tweaks into jailed iOS apps.
 
 ## Features
 * Works with almost every app-targeted tweak
-* Supports fetching tweaks through [Parcility](https://parcility.co)
+* Supports fetching tweaks through [Canister](https://canister.me/)
 * [iOS Only] Supports fetching tweaks through APT (-a option)
 * Supports importing multiple tweaks at once
 * Supports importing custom files and folders:
