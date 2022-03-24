@@ -40,20 +40,21 @@ case "$os" in
         }
 
         ExtractPlistValue () {
+            status=0
             if [ -n "$3" ]; then
-                plutil -key "$1" "$2" >> tmp 2>/dev/null
-                plutil -convert xml1 tmp &>/dev/null
-                sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp
-                rm tmp &>/dev/null
+                plutil -key "$1" "$2" >> tmp 2>/dev/null || status=1
+                plutil -convert xml1 tmp &>/dev/null || status=1
+                sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp || status=1
+                rm tmp &>/dev/null || status=1
             else
-                plutil -key "$1" "$2" 2>/dev/null
+                plutil -key "$1" "$2" 2>/dev/null || status=1
             fi
+            return "$status"
         }
 
         ExtractDEB () {
             if [ "$2" = "fetch" ]; then
                 FetchDEB "$1"
-
                 Announce "Extracting $1..."
                 dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
                 Verbose "Extracted $1.deb" "Couldn't extract $1.deb" 2
@@ -80,28 +81,34 @@ case "$os" in
             else
                 psed="string"
             fi
-            plutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<$psed>\(.*\)<\/$psed>.*/\1/p" 2>/dev/null
+            value="$(plutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<$psed>\(.*\)<\/$psed>.*/\1/p" 2>/dev/null)"
+
+            if [ -n "$value" ]; then
+                echo "$value"
+            else
+                return 1
+            fi
         }
 
         ExtractDEB () {
             origin_dir="$PWD"
-            TMP=$(mktemp -d)
-            cd "$TMP" || exit
+            mkdir -p "$dir/$tweakid/debtemp"
+            cd "$dir/$tweakid/debtemp" || exit
             if [ "$2" = "fetch" ]; then
                 FetchDEB "$1"
                 ar -x "tweak.deb"
                 status="$?"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v "$TMP" -x
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v -x
             else
                 ar -x "$1"
                 status="$?"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v "$TMP" -x
+                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v -x
             fi
             Announce "Extracting $(basename "$1")..."
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5 "$TMP"
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5
             cd "$origin_dir" || exit
-            rm -rf "$TMP"
+            rm -rf "$dir/$tweakid/debtemp"
         }
     ;;
 esac
@@ -142,12 +149,7 @@ Verbose () {
     if [ -z "$tv" ]; then tv=0; fi
     
     if [ "$tv" != 0 ]; then 
-
         echo "[*] $2"
-
-        for p in "$@"; do
-            if [ -e "$p" ]; then rm -rf "$p"; fi
-        done
 
         for p in "$@"; do
             if [[ $p =~ ^[0-9]+$ ]]; then
@@ -169,15 +171,20 @@ expand() {
     cd "$rootdir" || exit
     process_var="$(echo "$1" | xargs)"
     if [ -d "$1" ]; then
-        (cd "$1" || exit; pwd)
+        cd "$1" || exit; pwd
     else
         if [[ "$process_var" = /* ]]; then
             process_var="$(echo "$process_var" | xargs)"
         elif [[ "$process_var" == */* ]]; then
-            process_var="$(echo "$(cd "${process_var%/*}" || exit; pwd)/${process_var##*/}" | xargs)"
+            process_var="$(echo "$(cd "${process_var%/*}" &>/dev/null || estatus=1; pwd)/${process_var##*/}" | xargs)"
         else
+            estatus=1
+        fi
+
+        if [ "$estatus" == "1" ]; then
             process_var="$(echo "$(pwd)/$process_var" | xargs)"
         fi
+
         if [ -e "$process_var" ]; then
             echo "$process_var"
         else
@@ -234,7 +241,7 @@ FetchDEB () {
         if [[ "$g" =~ Package:.*$1 ]]; then
             if [[ "$g" =~ Version:.*$clatestv ]]; then
                 curl -sSL "$repo/$(echo "$g" | grep 'Filename:' | sed 's/^.*: //')" -o "tweak.deb"
-                Verbose "Fetched $1" "Couldn't fetch $1" 1 "$TMP"
+                Verbose "Fetched $1" "Couldn't fetch $1" 1
                 break
             fi
         fi
@@ -521,12 +528,11 @@ fi
 
 # REMOVING WATCH APP
 if [ -z "$no_remove_watchapp" ]; then
-    Announce "Removing Watch App..."
     while read -r i; do
         DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
         if [ "$DTPlatformName" == "watchos" ]; then
             if [ -z "$status" ]; then
-                Announce "Removing Watch App..."
+                Announce "Removing Watch App..." -v
             fi
             rm -rf "$(dirname "$i")"
             status=$(( status + $? ))
@@ -534,24 +540,36 @@ if [ -z "$no_remove_watchapp" ]; then
     done < <(find "$dir/$tweakid/Payload" -name "Info.plist")
 
     if [ -n "$status" ]; then
-         Verbose "Removed Watch App" "Couldn't Remove Watch App" -x
+         Verbose "Removed Watch App" "Couldn't Remove Watch App" -x -v
     else
         watch_app="$(find "$dir/$tweakid/Payload" -type d -name Watch.app -o -name Watch -o -name WatchApp.app)"
         if [ -n "$watch_app" ]; then
             rm -rf "$watch_app"
-            Verbose "Removed Watch App" "Couldn't Remove Watch App"
+            Verbose "Removed Watch App" "Couldn't Remove Watch App" -v
         else
-            Announce "There Was No Watch App To Remove"
+            Announce "There Was No Watch App To Remove" -v
         fi
     fi
 fi
 
 # SETTING APP VARIABLES
 appname="$(basename Payload/*.app)"
-executable="Payload/$appname/$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
-Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
+exec_name="$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
+if [ -n "$exec_name" ]; then
+    executable="Payload/$appname/$exec_name"
+    status=0
+else
+    status=1
+fi
+Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -x -v
+
 rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
-Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v 
+if [ -n "$rpath" ]; then
+    status=0
+else
+    status=1
+fi
+Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v -x
 mkdir -p "$rpath"
 
 # ENCRYPTION CHECK
@@ -691,7 +709,7 @@ if [ -n "${files[*]}" ]; then
 
             while read -r g; do
                 ExtractDEB "$g"
-                sudo -S rm -rf "$g"
+                echo "$root_password" | sudo -S rm -rf "$g"
             done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
         else
             for i in "${files[@]}"; do
@@ -878,7 +896,13 @@ fi
 # CHANGING BUNDLEID
 if [ -n "$bundle" ]; then
     orig_bundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
-    Verbose "Obtained Original BundleID" "Couldn't Obtain Original BundleID"
+    if [ -n "$orig_bundleid" ]; then
+        status=0
+    else
+        status=1
+    fi
+
+    Verbose "Obtained Original BundleID" "Couldn't Obtain Original BundleID" -x
 
     while read -r i; do
         CFBundleIdentifier="$(ExtractPlistValue CFBundleIdentifier "$i")"
@@ -908,10 +932,13 @@ fi
 if [ -n "$fakesign" ]; then
     Announce "Fakesigning iPA..."
         while read -r i; do
-            ldid -s "$i" &>/dev/null
-            Verbose "Fakesigned $(lib_basename "$i")" "Couldn't Fakesign $(lib_basename "$i")" -v
-        done < <(find Payload -type f ! -name "*.*" ! -name "CodeResources" ! -name PkgInfo)
-    Verbose "Finished Fakesigning" "Couldn't Fakesign App"
+            ldid -S -M "$i" &>/dev/null
+            status="$?"
+            lstat=$(( lstat + status ))
+            Verbose "Fakesigned $(basename "$i")" "Couldn't Fakesign $(basename "$i")" -v -x
+        done < <(find Payload -name "*.framework" -o -name "*.dylib" && echo "$executable")
+    status="$lstat"
+    Verbose "Finished Fakesigning" "Couldn't Fakesign App" -x
 fi
 
 # GENERATING IPA
