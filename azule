@@ -170,26 +170,14 @@ expand() {
     current_dir="$PWD"
     cd "$rootdir" || exit
     process_var="$(echo "$1" | xargs)"
-    if [ -d "$1" ]; then
-        cd "$1" || exit; pwd
+    if [ -d "$process_var" ]; then
+        cd "$process_var" || exit; pwd
+    elif [[ "$process_var" = /* ]]; then
+        echo "$process_var" | xargs
+    elif [[ "$process_var" == */* ]] && [ -d "${process_var%/*}" ]; then
+        echo "$(cd "${process_var%/*}" || exit)/${process_var##*/}" | xargs
     else
-        if [[ "$process_var" = /* ]]; then
-            process_var="$(echo "$process_var" | xargs)"
-        elif [[ "$process_var" == */* ]]; then
-            process_var="$(echo "$(cd "${process_var%/*}" &>/dev/null || estatus=1; pwd)/${process_var##*/}" | xargs)"
-        else
-            estatus=1
-        fi
-
-        if [ "$estatus" == "1" ]; then
-            process_var="$(echo "$(pwd)/$process_var" | xargs)"
-        fi
-
-        if [ -e "$process_var" ]; then
-            echo "$process_var"
-        else
-            echo "$1"
-        fi
+        echo "$(pwd)/$process_var" | xargs
     fi
     cd "$current_dir" || exit
 }
@@ -207,6 +195,14 @@ idpath () {
         echo "@rpath/$(lib_basename "$1")"
     else
         echo "@executable_path/${1#Payload/"$appname"/}"
+    fi
+}
+
+checkvar () {
+    if [[ "$1" ]]; then
+        return 0
+    else
+        return 1
     fi
 }
 
@@ -364,10 +360,8 @@ if [ -z "$outdir" ]; then
     Announce "No Output Directory Specified. Run 'azule -h' for help" 27
 elif [ -z "$ipadir" ]; then
     Announce "No iPA Specified. Run 'azule -h' for help" 27
-elif [[ -z "$run" ]]; then
-    if [ "$os" != "iOS" ] || [ -e "$ipadir" ]; then
-        Announce "No Modifier Specified. Run 'azule -h' for help" 27
-    fi
+elif [[ -z "$run" ]] && [[ "$os" != "iOS" || -e "$ipadir" ]] ; then
+    Announce "No Modifiers Specified. Run 'azule -h' for help" 27
 fi
 
 # CREATING .TMP DIRECTORIES
@@ -555,21 +549,13 @@ fi
 # SETTING APP VARIABLES
 appname="$(basename Payload/*.app)"
 exec_name="$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
-if [ -n "$exec_name" ]; then
-    executable="Payload/$appname/$exec_name"
-    status=0
-else
-    status=1
-fi
-Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -x -v
+executable="Payload/$appname/$exec_name"
+checkvar "$exec_name"
+Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
 
 rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
-if [ -n "$rpath" ]; then
-    status=0
-else
-    status=1
-fi
-Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v -x
+checkvar "$rpath"
+Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
 mkdir -p "$rpath"
 
 # ENCRYPTION CHECK
@@ -896,13 +882,8 @@ fi
 # CHANGING BUNDLEID
 if [ -n "$bundle" ]; then
     orig_bundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
-    if [ -n "$orig_bundleid" ]; then
-        status=0
-    else
-        status=1
-    fi
-
-    Verbose "Obtained Original BundleID" "Couldn't Obtain Original BundleID" -x
+    checkvar "$orig_bundleid"
+    Verbose "Obtained Original BundleID" "Couldn't Obtain Original BundleID"
 
     while read -r i; do
         CFBundleIdentifier="$(ExtractPlistValue CFBundleIdentifier "$i")"
