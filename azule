@@ -17,16 +17,6 @@ case "$(uname -s)" in
     ;;
 esac
 
-# PLATFORM-SPECIFIC VARIABLES
-case "$os" in
-    MacOS) PATH="$AZULE/bin/darwin:$PATH" ;;
-    iOS) PATH="/usr/lib/Azule/bin:$PATH" ;;
-    Linux) 
-        PATH="$AZULE/bin/linux:$PATH"
-        PATH="$AZULE/toolchain/bin:$PATH" 
-    ;;
-esac
-
 # PLATFORM-SPECIFIC FUNCTIONS
 case "$os" in
 
@@ -162,22 +152,22 @@ Verbose () {
     fi
 }
 
-expand() {
-    if [ -z "$(echo "$1" | xargs)" ]; then
+expand () {
+    if ! [[ "$1" ]]; then
         return 0
     fi
-
     current_dir="$PWD"
     cd "$rootdir" || exit
     process_var="$(echo "$1" | xargs)"
-    if [ -d "$process_var" ]; then
-        cd "$process_var" || exit; pwd
-    elif [[ "$process_var" = /* ]]; then
-        echo "$process_var" | xargs
-    elif [[ "$process_var" == */* ]] && [ -d "${process_var%/*}" ]; then
-        echo "$(cd "${process_var%/*}" || exit)/${process_var##*/}" | xargs
+
+    if [ -f "$process_var" ]; then
+        echo "$(cd "$(dirname "$process_var")" && pwd)/$(basename "$process_var")"
+    elif [ -d "$process_var" ]; then
+        cd "$process_var" && pwd
+    elif [[ "$process_var" == ?*/* ]] && [ -d "$(dirname "$process_var")" ]; then
+        echo "$(cd "$(dirname "$process_var")" && pwd)"/"${process_var##*/}"
     else
-        echo "$(pwd)/$process_var" | xargs
+        echo "$process_var"
     fi
     cd "$current_dir" || exit
 }
@@ -203,6 +193,23 @@ checkvar () {
         return 0
     else
         return 1
+    fi
+}
+
+split_array () {
+    newarr="$1"
+    shift
+    IFS=" " read -ra "${newarr?}" <<< "$*"
+    export "${newarr?}"
+}
+
+resolve_symlink () {
+    if [ ! -h "$1" ]; then
+        echo "$1"
+    else
+        link="$(expr "$(command ls -ld -- "$1")" : '.*-> \(.*\)$')"
+        cd "$(dirname "$1")" || exit
+        resolve_symlink "$link" | sed "s|^\([^/].*\)\$|$(dirname "$1")/\1|"
     fi
 }
 
@@ -291,6 +298,12 @@ help () {
         echo "  -l                           Don't Update Outdated Apps"
         echo "  -k                           Don't Update APT Sources (Used With -a)"
         echo "  -d                           Don't install package dependencies (Used With -a)"
+    else
+        echo
+        echo "MacOS/Linux/WSL Only:"
+        echo "  -U                           Don't Update Azule on run"
+        echo "  -F                           Forcefully update Azule"
+        echo "  -R                           Redownload the latest substrate, substitute, and linux toolchain"
     fi
     echo
     cleanup
@@ -301,7 +314,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
+while getopts an:i:o:c:b:x:f:p:huSewsrmjqdRyUzgFklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
@@ -312,8 +325,12 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
         done
     fi
 
-    # iOS ONLY
-    if [[ "$args" == @(a|x|l|k|d|g) && "$os" != "iOS" ]]; then
+    # PLATFORM SPECIFIC
+    if [ "$os" = "iOS" ]; then
+        if [[ "$args" == @(U|F|R) ]]; then
+            Announce "-$args is not supported on your platform" 6
+        fi
+    elif [[ "$args" == @(a|x|l|k|d|g) ]]; then
         Announce "-$args is not supported on your platform" 6
     fi
 
@@ -323,7 +340,7 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
         a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
         b) bundle="${tmp[*]}" && run=1 ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
-        f) IFS=" " read -r -a files <<< "${tmp[*]}" && run=1 ;;
+        f) split_array files "${tmp[*]}" && run=1 ;;
         i) ipadir="$(expand "${tmp[*]}")" ;;
         n) name="${tmp[*]}" ;;
         o) outdir="$(expand "${tmp[*]}")" ;;
@@ -344,6 +361,11 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
         y) weak=1 ;;
         z) no_zip=1 ;;
 
+        # MACOS/LINUX ONLY SWITCHES
+        U) no_update_azule=1 ;;
+        F) force_update_azule=1 ;;
+        R) redownload_resources=1 ;;
+
         # iOS ONLY SWITCHES
         d) no_recurse=1 ;;
         g) outdated=1 ;;
@@ -354,6 +376,98 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdyzgklv args; do
         *) Announce "Invalid option: $*. Run 'azule -h' for help" 6 ;;
     esac
 done
+
+# SETTING $AZULE, INTEGRITY CHECKS, AND UPDATE CHECKS
+if [[ "$os" == @(MacOS|Linux) ]]; then
+    azule="$(dirname "$(resolve_symlink "$0")")"
+    if curl -I google.com &>/dev/null; then 
+        cd "$azule" || exit
+
+        if [ -n "$force_update_azule" ]; then
+            git reset --hard HEAD >> /dev/null
+        fi
+
+        if [ -z "$no_update_azule" ] || [ -n "$force_update_azule" ]; then
+            Announce "Checking for Updates..." -v
+            if [ "$(git rev-list HEAD..."@{u}" --count)" == "0" ]; then
+                Announce "Azule is Up to Date"
+            else
+                Announce "Updating Azule..." -v
+                git pull -q
+                Verbose "Updated Azule" "Couldn't Update Azule" 29
+            fi
+        fi
+
+        if [ -n "$redownload_resources" ]; then
+            rm -rf lib toolchain
+        fi
+
+        if [ "$os" == "MacOS" ]; then
+            if ! xcode-select -p 1>/dev/null; then
+                xcode-select --install
+            fi
+        else
+            mkdir -p "$azule/toolchain"
+            if [ ! "$(ls -A "$azule/toolchain")" ]; then
+                Announce "Fetching toolchain..."
+                TMP=$(mktemp -d)
+                cd "$TMP" || exit
+                curl -LsSO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
+                Announce "Fetched Toolchain"
+                Announce "Setting Up Toolchain..."
+                tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
+                mv "$TMP"/ios-arm64e-clang-toolchain/* "$azule"/toolchain
+                cd "$azule" || exit
+                rm -rf "$TMP"
+                Announce "Set Up Toolchain"
+            fi
+        fi
+    fi
+    
+    if [ ! -d "$azule/lib/CydiaSubstrate.framework" ]; then
+        mkdir -p "$azule/lib"
+        Announce "Downloading CydiaSubstrate..."
+        TMP=$(mktemp -d)
+        cd "$TMP" || exit
+        curl -sSL https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
+        ar -x "substrate.deb"
+        tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
+        rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+        mv "$TMP"/libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
+        mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+        mv CydiaSubstrate.framework "$azule"/lib/CydiaSubstrate.framework
+        cd "$azule" || exit
+        rm -rf "$TMP"
+        plutil -convert binary1 "$azule/lib/CydiaSubstrate.framework/Info.plist"
+        Announce "Downloaded CydiaSubstrate.framework"
+    fi
+
+    if [ ! -e "$azule/lib/libsubstitute.dylib" ]; then
+        TMP="$(mktemp -d)"
+        cd "$TMP" || exit 
+        Announce "Downloading Substitute..."
+        curl -sS https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
+        ar -x "substitute.deb"
+        tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
+        mv libsubstitute.dylib "$azule/lib/libsubstitute.dylib"
+        Announce "Downloaded Substitute"
+        cd "$azule" || exit
+        rm -rf "$TMP"
+    fi
+    cd "$rootdir" || exit
+else
+    azule="/usr/lib/Azule"
+fi
+
+# PLATFORM-SPECIFIC VARIABLES
+case "$os" in
+    MacOS) PATH="$azule/bin/darwin:$PATH" ;;
+    iOS) PATH="/usr/lib/Azule/bin:$PATH" ;;
+    Linux) 
+        PATH="$azule/bin/linux:$PATH"
+        PATH="$azule/toolchain/bin:$PATH" 
+    ;;
+esac
 
 # VARIABLE CHECK
 if [ -z "$outdir" ]; then
@@ -634,12 +748,12 @@ if [ -n "${files[*]}" ]; then
             while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
 
             if [ -n "$no_recurse" ]; then
-                IFS=" " read -r -a apt_packages <<< "${files[*]}"
+                apt_packages=$files
             else
                 for j in "${files[@]}"; do
 
                     # NO OR
-                    IFS=" " read -ra apt_no_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
+                    split_array apt_no_or "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
 
                     # ONLY OR
                     IFS="--" read -ra apt_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | cut -d: -f2 | sed "s|>||g" | sed "s|<||g" | xargs)"
@@ -670,7 +784,7 @@ if [ -n "${files[*]}" ]; then
                             done
                         done
                     done
-                    IFS=" " read -r -a apt_packages <<< "${apt_packages[*]} ${apt_no_or[*]}"
+                    split_array apt_packages "${apt_packages[*]} ${apt_no_or[*]}"
                 done
             fi
 
@@ -724,7 +838,7 @@ if [ -n "${files[*]}" ]; then
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
-            IFS=" " read -ra idtypes <<< "$(ExtractPlistValue Filter "${i%.*}".plist key)"
+            split_array idtypes "$(ExtractPlistValue Filter "${i%.*}".plist key)"
             for idtype in "${idtypes[@]}"; do
                 case "$idtype" in
                     Bundles)
@@ -831,11 +945,8 @@ if [ -n "${files[*]}" ]; then
                                 hl_file="$hl"
                             fi
 
-                            if [ "$os" == "iOS" ]; then
-                                cp -a "/usr/lib/Azule/lib/$hl_file" "$rpath"
-                            elif ! cp -a "$AZULE/lib/$hl_file" "$rpath" &>/dev/null; then
-                                Announce "$hl_file not downloaded, please run setup-azule." 22
-                            fi
+                            cp -a "$azule/lib/$hl_file" "$rpath" &>/dev/null
+                            Verbose "Copied $hl_file to app directory" "Couldn't copy $hl_file to app directory" 22
                         fi
 
                         install_name_tool -change "$l" @rpath/"$hl" "$i" &>/dev/null
