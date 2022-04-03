@@ -28,9 +28,6 @@ A CLI tool used to inject iOS jailbreak tweaks into jailed iOS apps.
 
 For the extended usage instructions, run `azule -h` your terminal
 
-## Updating (Macos/Linux/Windows)
-Run `update-azule` in your terminal to update Azule
-
 ## Credits
 
 * [Kabir Oberai](https://github.com/kabiroberai/theos-jailed) - Wrote Theos Jailed
