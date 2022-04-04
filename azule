@@ -381,10 +381,7 @@ done
 case "$os" in
     MacOS) PATH="$azule/bin/darwin:$PATH" ;;
     iOS) PATH="/usr/lib/Azule/bin:$PATH" ;;
-    Linux) 
-        PATH="$azule/bin/linux:$PATH"
-        PATH="$azule/toolchain/bin:$PATH" 
-    ;;
+    Linux) PATH="$azule/bin/linux:$PATH" ;;
 esac
 
 # SETTING $AZULE, INTEGRITY CHECKS, AND UPDATE CHECKS
@@ -431,6 +428,7 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
                 rm -rf "$TMP"
                 Announce "Set Up Toolchain"
             fi
+            PATH="$azule/toolchain/bin:$PATH" 
         fi
     fi
     
