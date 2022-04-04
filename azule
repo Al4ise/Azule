@@ -377,6 +377,16 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdRyUzgFklv args; do
     esac
 done
 
+# PLATFORM-SPECIFIC VARIABLES
+case "$os" in
+    MacOS) PATH="$azule/bin/darwin:$PATH" ;;
+    iOS) PATH="/usr/lib/Azule/bin:$PATH" ;;
+    Linux) 
+        PATH="$azule/bin/linux:$PATH"
+        PATH="$azule/toolchain/bin:$PATH" 
+    ;;
+esac
+
 # SETTING $AZULE, INTEGRITY CHECKS, AND UPDATE CHECKS
 if [[ "$os" == @(MacOS|Linux) ]]; then
     azule="$(dirname "$(resolve_symlink "$0")")"
@@ -458,16 +468,6 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
 else
     azule="/usr/lib/Azule"
 fi
-
-# PLATFORM-SPECIFIC VARIABLES
-case "$os" in
-    MacOS) PATH="$azule/bin/darwin:$PATH" ;;
-    iOS) PATH="/usr/lib/Azule/bin:$PATH" ;;
-    Linux) 
-        PATH="$azule/bin/linux:$PATH"
-        PATH="$azule/toolchain/bin:$PATH" 
-    ;;
-esac
 
 # VARIABLE CHECK
 if [ -z "$outdir" ]; then
