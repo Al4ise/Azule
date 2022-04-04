@@ -384,6 +384,7 @@ case "$os" in
     Linux) PATH="$azule/bin/linux:$PATH" ;;
 esac
 
+
 # SETTING $AZULE, INTEGRITY CHECKS, AND UPDATE CHECKS
 if [[ "$os" == @(MacOS|Linux) ]]; then
     azule="$(dirname "$(resolve_symlink "$0")")"
