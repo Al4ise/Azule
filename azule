@@ -412,8 +412,9 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
                 Announce "Updating Azule..." -v
                 git pull -q
                 Verbose "Updated Azule" "Couldn't Update Azule" 29
+                exec "$(resolve_symlink "$0")"
             else
-                Announce "Azule is Up to Date"
+                Announce "Azule is Up to Date" -v
             fi
         fi
 
@@ -631,6 +632,24 @@ else
     Announce "Invalid App" 8
 fi
 
+# SETTING OUTPUT DIRECTORY AND NAME
+if [ -n "$run" ] || [ -n "$bfplist" ]; then
+    if ! [ "${outdir: -4}" == ".ipa" ]; then
+        if [ -n "$no_zip" ]; then
+            if [ -z "$name" ]; then
+                outdir="$outdir/$appname"
+            elif [ "$name" == "*.app" ]; then
+                outdir="$outdir/$name"
+            else
+                outdir="$outdir/$name.app"
+            fi
+        elif [ -z "$name" ]; then
+            name="$(basename "$ipadir" .ipa)"
+            custom_name=1
+        fi
+    fi
+fi
+
 # REMOVING PLUGINS
 if [ -n "$remove_extensions" ]; then
     Announce "Removing Extensions..."
@@ -722,7 +741,11 @@ if [ -n "${files[*]}" ]; then
                         Verbose "Copied $(basename "$(expand "$string")") to work directory" "Couldn't Copy $(basename "$i") to work directory" 16
                     ;;
                 esac
+                if [ -n "$custom_name" ]; then
+                    name+="+$(basename "$(expand "$string")")"
+                fi
                 unset string
+
                 for g in "${indexes[@]}"; do
                     unset "files[g]"
                 done
@@ -1042,30 +1065,10 @@ fi
 
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
-
-    # SETTING OUTPUT DIRECTORY AND NAME
-    if ! [ "${outdir: -4}" == ".ipa" ]; then
-        if [ -n "$no_zip" ]; then
-            if [ -z "$name" ]; then
-                outdir="$outdir/$appname"
-            else
-                if [ "$name" == "*.app" ]; then
-                    outdir="$outdir/$name"
-                else
-                    outdir="$outdir/$name.app"
-                fi
-            fi
-        else
-            if [ -z "$name" ]; then
-                name="$(basename "$ipadir" .ipa)"
-                for i in "${files[@]}"; do
-                    name+="+$(basename "$i")"
-                done
-            fi
-            outdir="$outdir/$name.ipa"
-        fi
+    if [ -n "$custom_name" ]; then
+        outdir="$outdir/$name.ipa"
     fi
-
+    
     # SHORTEN OUTPUT NAME IF NEEDED
     if [[ ${#outdir} -gt 264 ]]; then
         outdir="${outdir::${#outdir}-4}"
