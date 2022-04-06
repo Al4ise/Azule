@@ -379,15 +379,25 @@ done
 
 # PLATFORM-SPECIFIC VARIABLES
 case "$os" in
-    MacOS) PATH="$azule/bin/darwin:$PATH" ;;
-    iOS) PATH="/usr/lib/Azule/bin:$PATH" ;;
-    Linux) PATH="$azule/bin/linux:$PATH" ;;
+    MacOS)     
+        azule="$(dirname "$(resolve_symlink "$0")")"
+        PATH="$azule/bin/darwin:$PATH" 
+    ;;
+
+    iOS) 
+        PATH="/usr/lib/Azule/bin:$PATH"
+        azule="/usr/lib/Azule"
+    ;;
+    
+    Linux) 
+        azule="$(dirname "$(resolve_symlink "$0")")"
+        PATH="$azule/bin/linux:$PATH"
+        PATH="$azule/toolchain/bin:$PATH" 
+    ;;
 esac
 
-
-# SETTING $AZULE, INTEGRITY CHECKS, AND UPDATE CHECKS
+# INTEGRITY CHECKS, AND UPDATE CHECKS
 if [[ "$os" == @(MacOS|Linux) ]]; then
-    azule="$(dirname "$(resolve_symlink "$0")")"
     if curl -I google.com &>/dev/null; then 
         cd "$azule" || exit
 
@@ -429,7 +439,6 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
                 rm -rf "$TMP"
                 Announce "Set Up Toolchain"
             fi
-            PATH="$azule/toolchain/bin:$PATH" 
         fi
     fi
     
@@ -464,8 +473,6 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
         rm -rf "$TMP"
     fi
     cd "$rootdir" || exit
-else
-    azule="/usr/lib/Azule"
 fi
 
 # VARIABLE CHECK
