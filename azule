@@ -388,7 +388,7 @@ case "$os" in
         PATH="/usr/lib/Azule/bin:$PATH"
         azule="/usr/lib/Azule"
     ;;
-    
+
     Linux) 
         azule="$(dirname "$(resolve_symlink "$0")")"
         PATH="$azule/bin/linux:$PATH"
@@ -407,12 +407,13 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
 
         if [ -z "$no_update_azule" ] || [ -n "$force_update_azule" ]; then
             Announce "Checking for Updates..." -v
-            if [ "$(git rev-list HEAD..."@{u}" --count)" == "0" ]; then
-                Announce "Azule is Up to Date"
-            else
+            git fetch
+            if [ "$(git rev-list HEAD...origin/main --count)" != "0" ]; then
                 Announce "Updating Azule..." -v
                 git pull -q
                 Verbose "Updated Azule" "Couldn't Update Azule" 29
+            else
+                Announce "Azule is Up to Date"
             fi
         fi
 
