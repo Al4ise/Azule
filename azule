@@ -412,7 +412,7 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
                 Announce "Updating Azule..." -v
                 git pull -q
                 Verbose "Updated Azule" "Couldn't Update Azule" 29
-                exec "$(resolve_symlink "$0")"
+                exec "$(resolve_symlink "$0")" "$@"
             else
                 Announce "Azule is Up to Date" -v
             fi
@@ -997,10 +997,12 @@ if [ -n "${files[*]}" ]; then
         if ! { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; }; then
             if [ -n "$weak" ]; then 
                 insert_dylib --inplace --weak --no-strip-codesig "$id_path" "$executable" &>/dev/null
-                Verbose "Injected $(lib_basename "$i") as weak" "Couldn't inject $(lib_basename "$i")" 24
+                if ! [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; then status="1"; fi
+                Verbose "Injected $(lib_basename "$i") as weak" "Couldn't inject $(lib_basename "$i")" 24 -x
             else
                 insert_dylib --inplace --no-strip-codesig "$id_path" "$executable" &>/dev/null
-                Verbose "Injected $(lib_basename "$i")" "Couldn't inject $(lib_basename "$i")" 24
+                if ! [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; then status="1"; fi
+                Verbose "Injected $(lib_basename "$i")" "Couldn't inject $(lib_basename "$i")" 24 -x
             fi
         fi
     done
@@ -1068,7 +1070,7 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
     if [ -n "$custom_name" ]; then
         outdir="$outdir/$name.ipa"
     fi
-    
+
     # SHORTEN OUTPUT NAME IF NEEDED
     if [[ ${#outdir} -gt 264 ]]; then
         outdir="${outdir::${#outdir}-4}"
