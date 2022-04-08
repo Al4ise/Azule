@@ -1187,9 +1187,7 @@ fi
 
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
-    if [ -n "$custom_name" ]; then
-        outdir="$outdir/$name.ipa"
-    fi
+    [[ ! "$name" =~ ".ipa$" ]] && outdir="$outdir/$name.ipa"
 
     # SHORTEN OUTPUT NAME IF NEEDED
     if [[ ${#outdir} -gt 264 ]]; then
