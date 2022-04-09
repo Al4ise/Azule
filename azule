@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# ENABLE CLI OPTIONS
+# ENABLE EXTGLOB
 shopt -s extglob
 
-# SET INITIAL DIRECTORIES
+# SAVE INITIAL DIRECTORY
 rootdir="$PWD"
 
 # SET PLATFORM
@@ -19,7 +19,6 @@ esac
 
 # PLATFORM-SPECIFIC FUNCTIONS
 case "$os" in
-
     iOS)
         RemovePlistKey () {
             plutil -remove -key "$1" "$2" &>/dev/null
@@ -43,7 +42,8 @@ case "$os" in
         }
 
         ExtractDEB () {
-            if [ "$2" = "fetch" ]; then
+            if [ "$1" = "fetch" ]; then
+                shift
                 FetchDEB "$1"
                 Announce "Extracting $1..."
                 dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
@@ -84,17 +84,15 @@ case "$os" in
             origin_dir="$PWD"
             mkdir -p "$dir/$tweakid/debtemp"
             cd "$dir/$tweakid/debtemp" || exit
-            if [ "$2" = "fetch" ]; then
+            if [ "$1" = "fetch" ]; then
+                shift
                 FetchDEB "$1"
-                ar -x "tweak.deb"
-                status="$?"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v -x
+                Announce "Extracting $(basename "$1")..." -v
+                ar -x "tweak.deb" || status=1
             else
-                ar -x "$1"
-                status="$?"
-                Verbose "Extracted $(basename "$1") [ar]" "Couldn't extract $(basename "$1") [ar]" 4 -v -x
+                Announce "Extracting $(basename "$1")..." -v
+                ar -x "$1" || status=1
             fi
-            Announce "Extracting $(basename "$1")..."
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5
             cd "$origin_dir" || exit
@@ -197,9 +195,15 @@ checkvar () {
 }
 
 split_array () {
+    if [ "$1" = "-d" ]; then
+        delim="$2"
+        shift 2
+    else
+        delim=" "        
+    fi
     newarr="$1"
     shift
-    IFS=" " read -ra "${newarr?}" <<< "$*"
+    IFS="$delim" read -ra "${newarr?}" <<< "$*"
     export "${newarr?}"
 }
 
@@ -224,12 +228,32 @@ cleanup () {
     fi
 }
 
+PackageIsAvailable () {
+    if ! [ "$1" ]; then
+        return 1
+    fi
+    if [ -n "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
+        return 0
+    else
+        ###check sources list
+        return 1
+    fi
+}
+
 FetchDEB () {
+    if [ "$1" == "-o" ]; then
+        shift
+        outname="$1"
+        shift
+    else
+        outname="tweak.deb"
+    fi
+
     Announce "Fetching $1..." -v
     canister="$(curl -sSL "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
     repo="$(echo "$canister" | jq -r '.data[].repository.uri')"
     clatestv="$(echo "$canister" | jq -r '.data[].latestVersion')"
-
+    
     while read -r line; do
         if [[ $line == "" ]]; then ((g++)) && s=1; fi
         if [[ $s == 0 ]]; then
@@ -240,15 +264,42 @@ FetchDEB () {
         fi
     done < <(curl -sS "$repo/Packages")
 
-    for g in "${clusters[@]}"; do
-        if [[ "$g" =~ Package:.*$1 ]]; then
-            if [[ "$g" =~ Version:.*$clatestv ]]; then
-                curl -sSL "$repo/$(echo "$g" | grep 'Filename:' | sed 's/^.*: //')" -o "tweak.deb"
+    for j in "${clusters[@]}"; do
+        if [[ "$j" =~ Package:.*$1 ]]; then
+            if [[ "$j" =~ Version:.*$clatestv ]]; then
+                curl -sSL "$repo/$(echo "$j" | grep 'Filename:' | sed 's/^.*: //')" -o "$outname"
                 Verbose "Fetched $1" "Couldn't fetch $1" 1
+                fetched=1
                 break
             fi
         fi
     done
+
+    if [ -z "$fetched" ]; then
+        Announce "Couldn't Find $1 on Canister" 30
+    fi
+}
+
+GetControl () {
+    original_dir="$PWD"
+    mkdir -p "$dir/$tweakid/ctrltmp"
+    cd "$dir/$tweakid/ctrltmp" || exit
+    if [ "$2" != "-s" ]; then
+        Announce "Getting Control of $(basename "$1")..." -v
+    fi
+    if [ "$os" == "iOS" ]; then
+        dpkg-deb -e "$1" "$dir/$tweakid/ctrltmp" || status=1
+    else
+        ar -x "$1" || status=1
+        tar -C "$dir/$tweakid/ctrltmp" -xf control.tar.* || status=1
+    fi
+    if [ "$2" != "-s" ]; then
+        Verbose "Got Control of $(basename "$1")..." "Couldn't Get Control of $(basename "$1")" 4 -v -x 
+    fi
+    control="$(cat "$dir/$tweakid"/ctrltmp/control)"
+    rm -rf "$dir/$tweakid/ctrltmp"
+    export control
+    cd "$original_dir" || exit
 }
 
 help () {
@@ -278,6 +329,7 @@ help () {
     echo
     echo "Others:"
     echo "  -n [Name]                    Specify a name for the Output iPA"
+    # echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
     echo "  -v                           Enable Verbose Mode"
     echo "  -s                           Silence Everything But Important Errors"
     echo "  -w                           Don't Remove Watch App"
@@ -314,10 +366,10 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:p:huSewsrmjqdRyUzgFklv args; do
+while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFklv args; do
 
     # STUFF WITH PARAMETERS
-    if [[ "$args" == @(x|a|n|b|p|i|o|c|f) ]]; then
+    if [[ "$args" == @(x|a|n|b|p|i|o|c|f|A) ]]; then
         tmp=( "$OPTARG" )
         until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
             tmp+=( "$(eval "echo \${$OPTIND}")" )
@@ -338,6 +390,7 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqdRyUzgFklv args; do
 
         # STUFF WITH PARAMETERS
         a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
+        #A) split_array repos "${tmp[*]}" ;;
         b) bundle="${tmp[*]}" && run=1 ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) split_array files "${tmp[*]}" && run=1 ;;
@@ -407,7 +460,7 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
 
         if [ -z "$no_update_azule" ] || [ -n "$force_update_azule" ]; then
             Announce "Checking for Updates..." -v
-            git fetch
+            git fetch -q
             if [ "$(git rev-list HEAD...origin/main --count)" != "0" ]; then
                 Announce "Updating Azule..." -v
                 git pull -q
@@ -727,6 +780,7 @@ if [ -n "${files[*]}" ]; then
                 case "$(expand "$string")" in
                     *.deb) 
                         ExtractDEB "$(expand "$string")"
+                        debs+=( "$(expand "$string")" )
                     ;;
                     
                     *.dylib|*.framework)
@@ -786,7 +840,7 @@ if [ -n "${files[*]}" ]; then
                     split_array apt_no_or "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
 
                     # ONLY OR
-                    IFS="--" read -ra apt_or <<< "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | cut -d: -f2 | sed "s|>||g" | sed "s|<||g" | xargs)"
+                    split_array -d "--" apt_or "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | cut -d: -f2 | sed "s|>||g" | sed "s|<||g" | xargs)"
                     for i in "${apt_or[@]}"; do
                         if ! [[ "$i" =~ firmware ]] && ! [[ "$i" =~ cy+cpu.arm64 ]]; then
                             for x in $i; do
@@ -843,8 +897,74 @@ if [ -n "${files[*]}" ]; then
             done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
         else
             for i in "${files[@]}"; do
-                if [ -n "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$i" | jq -r .data[])" ]; then
-                    ExtractDEB "$i" fetch
+                if PackageIsAvailable "$i"; then
+
+                    # RECURSE AND RESOLVE DEPENDENCIES
+                    origin_dir="$PWD"
+                    mkdir -p "$dir/$tweakid/debs"
+                    unset "array[@]"
+                    unset "pkgs[@]"
+                    unset "indexi[@]"
+                    array=( "$i" )
+                    while [[ -n "${array[*]}" ]]; do
+                        for h in "${array[@]}"; do
+                            unset "dep_available"
+                            mkdir -p "$dir/$tweakid/debtemp"
+                            cd "$dir/$tweakid/debtemp" || exit
+                            for x in "${debs[@]}"; do
+                                GetControl "$x" -s
+                                if [ "$h" == "$(echo "$control" | grep "Package:" | sed 's/^[^ ]* //')" ]; then
+                                    Announce "A local version of $h was supplied. Not fetching."
+                                    pkg="$x"
+                                    dep_available=1
+                                    break
+                                fi
+                            done
+
+                            if [ -z "$dep_available" ]; then
+                                pkg="$dir/$tweakid/debs/$h.deb"
+                                FetchDEB -o "$pkg" "$h"
+                                GetControl "$pkg"
+                            fi
+
+                            pkgs+=( "$pkg" )
+                            split_array -d ", " array "$(echo "$control" | grep "Depends:" | sed 's/^[^ ]* //' | sed 's/([^()]*)//g')"
+
+                            k=0
+                            while [ -n "${array[k]}" ]; do
+                                if [ "${array[k]}" == "|" ]; then
+                                    if [[ "${array[k-1]}" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|coreutils|firmware|cy+cpu.arm64|gsc.ipad) || "$(PackageIsAvailable "${array[k-1]}")" ]]; then
+                                        until [[ "${array[k+2]}" != "|" ]]; do
+                                            indexi+=( "$((k++))" "$((k+2))" )
+                                            ((k+2))
+                                        done
+                                        indexi+=( "$((k++))" "$((k+2))" )
+                                    else
+                                        ((k++))
+                                    fi
+                                else
+                                    ((k++))
+                                fi
+                            done
+
+                            for n in "${indexi[@]}"; do
+                                unset "array[$n]"
+                            done
+
+                            for x in "${!array[@]}"; do
+                                if [[ "${array[x]}" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|coreutils|firmware|cy+cpu.arm64|gsc.ipad) ]]; then
+                                    unset "array[x]"
+                                fi
+                            done
+                            cd "$origin_dir" || exit
+                            rm -rf "$dir/$tweakid/debtemp"
+                        done
+                    done
+
+                    # EXTRACTING FETCHED DEBS
+                    for deb in "${pkgs[@]}"; do
+                        ExtractDEB "$deb"
+                    done
                 else
                     Announce "$i couldn't be found" 18
                 fi
