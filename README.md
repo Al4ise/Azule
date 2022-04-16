@@ -15,7 +15,7 @@ A CLI tool used to inject iOS jailbreak tweaks into jailed iOS apps.
 * [iOS Only] Supports fetching and decrypting apps from the App Store
 * Easy to use:
   - Just specify an iPA and a Tweak. Azule will do the rest for you.
-  - Includes the global commands `azule` and `update-azule` to further simplify invocation and updating
+  - Includes the global command `azule`  to further simplify invocation
 
 ## Advanced Options
 * Change an app's version
