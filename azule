@@ -1013,7 +1013,6 @@ if [ -n "${files[*]}" ]; then
                             if [ -z "$dep_available" ]; then
                                 pkg="$dir/$tweakid/debs/$h.deb"
                                 FetchDEB -o "$pkg" "$h"
-                                cp "$pkg" ~/Desktop/spotilife.deb
                                 GetControl "$pkg"
                             fi
 
