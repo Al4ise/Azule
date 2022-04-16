@@ -42,17 +42,9 @@ case "$os" in
         }
 
         ExtractDEB () {
-            if [ "$1" = "fetch" ]; then
-                shift
-                FetchDEB "$1"
-                Announce "Extracting $1..."
-                dpkg -x "tweak.deb" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $1.deb" "Couldn't extract $1.deb" 2
-            else
-                Announce "Extracting $(basename "$1")..."
-                dpkg -x "$1" "$dir/$tweakid/Tweak"
-                Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 3
-            fi
+            Announce "Extracting $(basename "$1")..."
+            dpkg -x "$1" "$dir/$tweakid/Tweak"
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 3
         }
     ;;
 
@@ -84,15 +76,8 @@ case "$os" in
             origin_dir="$PWD"
             mkdir -p "$dir/$tweakid/debtemp"
             cd "$dir/$tweakid/debtemp" || exit
-            if [ "$1" = "fetch" ]; then
-                shift
-                FetchDEB "$1"
-                Announce "Extracting $(basename "$1")..." -v
-                ar -x "tweak.deb" || status=1
-            else
-                Announce "Extracting $(basename "$1")..." -v
-                ar -x "$1" || status=1
-            fi
+            Announce "Extracting $(basename "$1")..." -v
+            tar xf "$1" || status=1
             tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
             Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5
             cd "$origin_dir" || exit
@@ -217,6 +202,14 @@ resolve_symlink () {
     fi
 }
 
+verlt() {
+    if [ "$1" = "$2" ]; then
+        return 1
+    else
+        [  "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ]
+    fi
+}
+
 cleanup () {
     rm -rf "$dir"
     cd "$rootdir" || exit
@@ -232,11 +225,18 @@ PackageIsAvailable () {
     if ! [ "$1" ]; then
         return 1
     fi
-    if [ -n "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
-        return 0
-    else
-        ###check sources list
-        return 1
+
+    if [ -z "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
+        unset "sources[@]"
+        while read -r line; do
+            sources+=( "$line" )
+        done < <(grep -l "$1" "$dir/$tweakid"/packagelists/*)
+
+        if [ -z "${sources[*]}" ]; then
+            return 1
+        fi
+
+        export sources
     fi
 }
 
@@ -250,33 +250,71 @@ FetchDEB () {
     fi
 
     Announce "Fetching $1..." -v
-    canister="$(curl -sSL "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
-    repo="$(echo "$canister" | jq -r '.data[].repository.uri')"
-    clatestv="$(echo "$canister" | jq -r '.data[].latestVersion')"
+    if [ -z "$ignore_canister" ] && [ -n "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
+        canister="$(curl -sSL "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
+        repo="$(echo "$canister" | jq -r '.data[].repository.uri')"
+        clatestv="$(echo "$canister" | jq -r '.data[].latestVersion')"
     
-    while read -r line; do
-        if [[ $line == "" ]]; then ((g++)) && s=1; fi
-        if [[ $s == 0 ]]; then
-            clusters[$g]="${clusters[$g]}"$'\n'"$line"
-        else  
-            clusters[$g]="$line"
-            s=0 
-        fi
-    done < <(curl -sS "$repo/Packages")
-
-    for j in "${clusters[@]}"; do
-        if [[ "$j" =~ Package:.*$1 ]]; then
-            if [[ "$j" =~ Version:.*$clatestv ]]; then
-                curl -sSL "$repo/$(echo "$j" | grep 'Filename:' | sed 's/^.*: //')" -o "$outname"
-                Verbose "Fetched $1" "Couldn't fetch $1" 1
-                fetched=1
-                break
+        GetPackages "$repo"
+        while read -r line; do
+            if [[ $line == "" ]]; then ((g++)) && s=1; fi
+            if [[ $s == 0 ]]; then
+                clusters[$g]="${clusters[$g]}"$'\n'"$line"
+            else  
+                clusters[$g]="$line"
+                s=0 
             fi
-        fi
-    done
+        done < "$dir/$tweakid/packagelists/$hash"
+
+        for j in "${clusters[@]}"; do
+            if [[ "$j" =~ Package:.*$1 ]]; then
+                if [[ "$j" =~ Version:.*$clatestv ]]; then
+                    curl -sSL "$repo/$(echo "$j" | grep 'Filename:' | sed 's/^.*: //')" -o "$outname"
+                    Verbose "Fetched $1" "Couldn't fetch $1" 1
+                    fetched=1
+                    break
+                fi
+            fi
+        done
+    fi
+
+    if [ -z "$fetched" ] && [ -n "${repos[*]}" ]; then
+        for j in "${sources[@]}"; do
+            unset "packages[@]"
+            unset "g"
+            while read -r line; do
+                if [[ $line == "" ]]; then ((g++)) && s=1; fi
+                if [[ $s == 0 ]]; then
+                    packages[$g]="${packages[$g]}"$'\n'"$line"
+                else  
+                    packages[$g]="$line"
+                    s=0 
+                fi
+            done < "$j"
+
+            for r in "${clean_sources[@]}"; do
+                if [ "$(basename "$j")" == "$(echo -n "$r" | shasum | cut -d ' ' -f1)" ]; then
+                    repo="$r"
+                fi
+            done
+
+            for p in "${packages[@]}"; do
+                if [[ "$p" =~ Package:.*$1 ]]; then
+                    currentversion="$(echo "$p" | grep "Version: *" | cut -d ' ' -f2)"
+                    if verlt "$latestversion" "$currentversion"; then
+                        latestversion="$currentversion"
+                        pfilename="$repo/$(echo "$p" | grep 'Filename:' | sed 's/^.*: //')"
+                    fi
+                fi
+            done
+        done
+        curl -sSL "$pfilename" -o "$outname"
+        Verbose "Fetched $1" "Couldn't fetch $1" 30
+        fetched=1
+    fi
 
     if [ -z "$fetched" ]; then
-        Announce "Couldn't Find $1 on Canister" 30
+        Announce "Couldn't find $1"
     fi
 }
 
@@ -290,7 +328,7 @@ GetControl () {
     if [ "$os" == "iOS" ]; then
         dpkg-deb -e "$1" "$dir/$tweakid/ctrltmp" || status=1
     else
-        ar -x "$1" || status=1
+        tar xf "$1" || status=1
         tar -C "$dir/$tweakid/ctrltmp" -xf control.tar.* || status=1
     fi
     if [ "$2" != "-s" ]; then
@@ -300,6 +338,29 @@ GetControl () {
     rm -rf "$dir/$tweakid/ctrltmp"
     export control
     cd "$original_dir" || exit
+}
+
+GetPackages () {
+    Announce "Fetching Packages of $1..."
+    for pkgfile in Packages Packages.xz Packages.gz Packages.bz2 Packages.zst; do
+        if [ "$(curl --silent --output /dev/null -w "%{http_code}" "$1/$pkgfile")" -eq 200 ]; then
+            hash="$(echo -n "$1" | shasum | cut -d ' ' -f1)"
+            case "$pkgfile" in
+                Packages) curl -sSL "$1/$pkgfile" -o "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                Packages.xz) curl -sSL "$1/$pkgfile" | unxz -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                Packages.gz) curl -sSL "$1/$pkgfile" | gzip -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                Packages.bz2) curl -sSL "$1/$pkgfile" | bzip2 -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                Packages.zst) curl -sSL "$1/$pkgfile" | zstd -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+            esac
+            export hash
+            break
+        fi
+    done
+    if [ -n "$got_packages" ]; then
+        Announce "Fetched Packages of $1"
+    else
+        Announce "Couldn't Fetch Packages of $1" 31
+    fi
 }
 
 help () {
@@ -329,7 +390,8 @@ help () {
     echo
     echo "Others:"
     echo "  -n [Name]                    Specify a name for the Output iPA"
-    # echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
+    echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
+    echo "  -L                           Ignore packages from Canister"   
     echo "  -v                           Enable Verbose Mode"
     echo "  -s                           Silence Everything But Important Errors"
     echo "  -w                           Don't Remove Watch App"
@@ -366,7 +428,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFklv args; do
+while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFLklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|a|n|b|p|i|o|c|f|A) ]]; then
@@ -390,7 +452,7 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFklv args; do
 
         # STUFF WITH PARAMETERS
         a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
-        #A) split_array repos "${tmp[*]}" ;;
+        A) split_array repos "${tmp[*]}" ;;
         b) bundle="${tmp[*]}" && run=1 ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) split_array files "${tmp[*]}" && run=1 ;;
@@ -412,6 +474,7 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFklv args; do
         v) verbose=1 ;;
         w) no_remove_watchapp=1 ;;
         y) weak=1 ;;
+        L) ignore_canister=1 ;;
         z) no_zip=1 ;;
 
         # MACOS/LINUX ONLY SWITCHES
@@ -691,14 +754,16 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
         if [ -n "$no_zip" ]; then
             if [ -z "$name" ]; then
                 outdir="$outdir/$appname"
-            elif [ "$name" == "*.app" ]; then
+            elif [[ "$name" == *".app" ]]; then
                 outdir="$outdir/$name"
             else
                 outdir="$outdir/$name.app"
             fi
         elif [ -z "$name" ]; then
-            name="$(basename "$ipadir" .ipa)"
+            name="$(basename "$ipadir")"
             custom_name=1
+        else
+            outdir="$outdir/$name.ipa"
         fi
     fi
 fi
@@ -896,6 +961,30 @@ if [ -n "${files[*]}" ]; then
                 echo "$root_password" | sudo -S rm -rf "$g"
             done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
         else
+            # BUILDING PACKAGE LISTS
+            mkdir -p "$dir/$tweakid/packagelists"
+            for url in "${repos[@]}"; do
+                if [ -e "$(expand "$url")" ]; then
+                    while read -r line; do
+                        if [[ "$line" == */ ]]; then
+                            clean_sources+=( "${line%?}" )
+                        else
+                            clean_sources+=( "$line" )
+                        fi
+                    done < <(grep "http" "$url" )
+                elif [[ "$url" == "http"* ]]; then
+                    if [[ "$url" == */ ]]; then
+                        clean_sources+=( "${url%?}" )
+                    else
+                        clean_sources+=( "$url" )
+                    fi
+                fi
+            done
+
+            for j in "${clean_sources[@]}"; do
+                GetPackages "$j"
+            done
+
             for i in "${files[@]}"; do
                 if PackageIsAvailable "$i"; then
 
@@ -924,6 +1013,7 @@ if [ -n "${files[*]}" ]; then
                             if [ -z "$dep_available" ]; then
                                 pkg="$dir/$tweakid/debs/$h.deb"
                                 FetchDEB -o "$pkg" "$h"
+                                cp "$pkg" ~/Desktop/spotilife.deb
                                 GetControl "$pkg"
                             fi
 
@@ -1195,13 +1285,16 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
     if [[ ${#outdir} -gt 264 ]]; then
         outdir="${outdir::${#outdir}-4}"
         characters_to_remove=$(( ${#outdir} - 264 ))
-        outdir="${outdir::${#outdir}-$characters_to_remove}.ipa"
+        if [ -z "$no_zip" ]; then
+            outdir="${outdir::${#outdir}-$characters_to_remove}.ipa"
+        else
+            outdir="${outdir::${#outdir}-$characters_to_remove}.app"
+        fi
         Announce "Shortened File Name"
     fi
 
     # CREATING OUTPUT DIRECTORY
     mkdir -p "$(dirname "$(expand "$outdir")")"
-
     if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
     if [ -n "$no_zip" ]; then
         Announce "Generating App..."
