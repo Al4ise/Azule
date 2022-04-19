@@ -361,6 +361,7 @@ GetPackages () {
             Announce "Couldn't Refresh $rurl" 
         fi) &
     done
+    wait
 }
 
 help () {
@@ -394,7 +395,14 @@ help () {
     echo "  -L                           Ignore packages from Canister"   
     echo "  -k                           Ignore packages from APT Sources"
     echo "  -d                           Don't install package dependencies"
-    echo "  -D                           Enable refreshing Procursus/Elcubratus repos"  
+    echo "  -D                           Disable refreshing Procursus/Elcubratus repos"  
+
+    if [ "$os" == "Linux" ]; then
+        echo "  -R                           Redownload the latest substrate, substitute, and toolchain"
+    else 
+        echo "  -R                           Redownload the latest substrate and substitute"
+    fi
+
     echo "  -v                           Enable Verbose Mode"
     echo "  -s                           Silence Everything But Important Errors"
     echo "  -w                           Don't Remove Watch App"
@@ -417,7 +425,6 @@ help () {
         echo "MacOS/Linux/WSL Only:"
         echo "  -U                           Don't Update Azule on run"
         echo "  -F                           Forcefully update Azule"
-        echo "  -R                           Redownload the latest substrate, substitute, and linux toolchain"
     fi
     echo
     cleanup
@@ -441,10 +448,10 @@ while getopts n:i:o:c:b:x:f:p:huSewsrmjDqAdRyUzgFLklv args; do
 
     # PLATFORM SPECIFIC
     if [ "$os" = "iOS" ]; then
-        if [[ "$args" == @(U|F|R) ]]; then
+        if [[ "$args" == @(U|F) ]]; then
             Announce "-$args is not supported on your platform" 6
         fi
-    elif [[ "$args" == @(x|l|k|g) ]]; then
+    elif [[ "$args" == @(x|l|g) ]]; then
         Announce "-$args is not supported on your platform" 6
     fi
 
@@ -476,7 +483,7 @@ while getopts n:i:o:c:b:x:f:p:huSewsrmjDqAdRyUzgFLklv args; do
         L) ignore_canister=1 ;;
         z) no_zip=1 ;;
         d) no_recurse=1 ;;
-        D) enable_dists=1 ;;
+        D) disable_dists=1 ;;
 
         # MACOS/LINUX ONLY SWITCHES
         U) no_update_azule=1 ;;
@@ -513,10 +520,9 @@ case "$os" in
 esac
 
 # INTEGRITY CHECKS, AND UPDATE CHECKS
-if [[ "$os" == @(MacOS|Linux) ]]; then
-    if curl -I google.com &>/dev/null; then 
-        cd "$azule" || exit
-
+if curl -I google.com &>/dev/null; then 
+    cd "$azule" || exit
+    if [[ "$os" == @(MacOS|Linux) ]]; then
         if [ -n "$force_update_azule" ]; then
             git reset --hard HEAD >> /dev/null
         fi
@@ -533,30 +539,30 @@ if [[ "$os" == @(MacOS|Linux) ]]; then
                 Announce "Azule is Up to Date" -v
             fi
         fi
+    fi
 
-        if [ -n "$redownload_resources" ]; then
-            rm -rf lib toolchain
+    if [ -n "$redownload_resources" ]; then
+        rm -rf lib toolchain
+    fi
+
+    if [ "$os" == "MacOS" ]; then
+        if ! xcode-select -p 1>/dev/null; then
+            xcode-select --install
         fi
-
-        if [ "$os" == "MacOS" ]; then
-            if ! xcode-select -p 1>/dev/null; then
-                xcode-select --install
-            fi
-        else
-            mkdir -p "$azule/toolchain"
-            if [ ! "$(ls -A "$azule/toolchain")" ]; then
-                Announce "Fetching toolchain..."
-                TMP=$(mktemp -d)
-                cd "$TMP" || exit
-                curl -LsSO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
-                Announce "Fetched Toolchain"
-                Announce "Setting Up Toolchain..."
-                tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
-                mv "$TMP"/ios-arm64e-clang-toolchain/* "$azule"/toolchain
-                cd "$azule" || exit
-                rm -rf "$TMP"
-                Announce "Set Up Toolchain"
-            fi
+    elif [ "$os" == "Linux" ]; then
+        mkdir -p "$azule/toolchain"
+        if [ ! "$(ls -A "$azule/toolchain")" ]; then
+            Announce "Fetching toolchain..."
+            TMP=$(mktemp -d)
+            cd "$TMP" || exit
+            curl -LsSO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
+            Announce "Fetched Toolchain"
+            Announce "Setting Up Toolchain..."
+            tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
+            mv "$TMP"/ios-arm64e-clang-toolchain/* "$azule"/toolchain
+            cd "$azule" || exit
+            rm -rf "$TMP"
+            Announce "Set Up Toolchain"
         fi
     fi
     
@@ -753,7 +759,8 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
     if ! [ "${outdir: -4}" == ".ipa" ]; then
         if [ -n "$no_zip" ]; then
             if [ -z "$name" ]; then
-                outdir="$outdir/$appname"
+                name="$(basename "$ipadir")"
+                custom_name=1
             elif [[ "$name" == *".app" ]]; then
                 outdir="$outdir/$name"
             else
@@ -909,23 +916,19 @@ if [ -n "${files[*]}" ]; then
             for url in "${!clean_sources[@]}"; do
                 if [[ "${clean_sources[url]}" == http*://apt.thebigboss.org* ]]; then
                     clean_sources[url]="http://apt.thebigboss.org/repofiles/cydia/dists/stable/main/binary-iphoneos-arm/"
-                else
+                elif [ -z "$disable_dists" ]; then
                     if [[ "${clean_sources[url]}" == http*://apt.procurs.us* ]]; then
                         unset "clean_sources[url]"
-                        if [ -n "$enable_dists" ]; then
-                            for suite in 1500 1600 1700 1800; do
-                                clean_sources+=( "https://apt.procurs.us/dists/iphoneos-arm64/$suite/main/binary-iphoneos-arm/" )
-                            done
-                        fi
+                        for suite in 1500 1600 1700 1800; do
+                            clean_sources+=( "https://apt.procurs.us/dists/iphoneos-arm64/$suite/main/binary-iphoneos-arm/" )
+                        done
                     fi
 
                     if [[ "${clean_sources[url]}" == http*://apt.bingner.com* ]]; then
                         unset "clean_sources[url]"
-                        if [ -n "$enable_dists" ]; then
-                            for suite in 478.23 550.58 800.00 1443.00; do
-                                clean_sources+=( "https://apt.bingner.com/dists/ios/$suite/main/binary-iphoneos-arm/" )
-                            done
-                        fi
+                        for suite in 478.23 550.58 800.00 1443.00; do
+                            clean_sources+=( "https://apt.bingner.com/dists/ios/$suite/main/binary-iphoneos-arm/" )
+                        done
                     fi
                 fi
             done
@@ -1227,7 +1230,11 @@ fi
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
     if [ -n "$custom_name" ]; then
-        outdir="$outdir/$name.ipa"
+        if [ -n "$no_zip" ]; then
+            outdir="$outdir/$name.app"
+        else
+            outdir="$outdir/$name.ipa"
+        fi
     fi
 
     # SHORTEN OUTPUT NAME IF NEEDED
@@ -1244,7 +1251,7 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
 
     # CREATING OUTPUT DIRECTORY
     mkdir -p "$(dirname "$(expand "$outdir")")"
-    if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
+    if [ -f "$outdir" ]; then rm -rf "$outdir"; fi
     if [ -n "$no_zip" ]; then
         Announce "Generating App..."
         mv Payload/"$appname" "$outdir" 
