@@ -254,8 +254,12 @@ FetchDEB () {
         canister="$(curl -sSL "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
         repo="$(echo "$canister" | jq -r '.data[].repository.uri')"
         clatestv="$(echo "$canister" | jq -r '.data[].latestVersion')"
-    
-        GetPackages "$repo"
+
+        hash="$(echo -n "$repo" | shasum | cut -d ' ' -f1)"
+        if [ ! -e "$dir/$tweakid/packagelists/$hash" ]; then
+            GetPackages "$repo"
+        fi
+
         while read -r line; do
             if [[ $line == "" ]]; then ((g++)) && s=1; fi
             if [[ $s == 0 ]]; then
@@ -322,17 +326,11 @@ GetControl () {
     original_dir="$PWD"
     mkdir -p "$dir/$tweakid/ctrltmp"
     cd "$dir/$tweakid/ctrltmp" || exit
-    if [ "$2" != "-s" ]; then
-        Announce "Getting Control of $(basename "$1")..." -v
-    fi
     if [ "$os" == "iOS" ]; then
         dpkg-deb -e "$1" "$dir/$tweakid/ctrltmp" || status=1
     else
         tar xf "$1" || status=1
         tar -C "$dir/$tweakid/ctrltmp" -xf control.tar.* || status=1
-    fi
-    if [ "$2" != "-s" ]; then
-        Verbose "Got Control of $(basename "$1")..." "Couldn't Get Control of $(basename "$1")" 4 -v -x 
     fi
     control="$(cat "$dir/$tweakid"/ctrltmp/control)"
     rm -rf "$dir/$tweakid/ctrltmp"
@@ -341,26 +339,28 @@ GetControl () {
 }
 
 GetPackages () {
-    Announce "Fetching Packages of $1..."
-    for pkgfile in Packages Packages.xz Packages.gz Packages.bz2 Packages.zst; do
-        if [ "$(curl --silent --output /dev/null -w "%{http_code}" "$1/$pkgfile")" -eq 200 ]; then
-            hash="$(echo -n "$1" | shasum | cut -d ' ' -f1)"
-            case "$pkgfile" in
-                Packages) curl -sSL "$1/$pkgfile" -o "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
-                Packages.xz) curl -sSL "$1/$pkgfile" | unxz -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
-                Packages.gz) curl -sSL "$1/$pkgfile" | gzip -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
-                Packages.bz2) curl -sSL "$1/$pkgfile" | bzip2 -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
-                Packages.zst) curl -sSL "$1/$pkgfile" | zstd -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
-            esac
-            export hash
-            break
-        fi
+    for rurl in "$@"; do
+        (Announce "Refreshing $rurl..."
+        for pkgfile in Packages.gz Packages.zst Packages Packages.xz Packages.bz2; do
+            unset "got_packages"
+            if [ "$(curl -sSL -o /dev/null -w "%{http_code}" "$rurl/$pkgfile")" -eq 200 ]; then
+                hash="$(echo -n "$rurl" | shasum | cut -d ' ' -f1)"
+                case "$pkgfile" in
+                    Packages) curl -sSL "$rurl/$pkgfile" -o "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                    Packages.xz) curl -sSL "$rurl/$pkgfile" | unxz -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                    Packages.gz) curl -sSL "$rurl/$pkgfile" | gzip -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                    Packages.bz2) curl -sSL "$rurl/$pkgfile" | bzip2 -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                    Packages.zst) curl -sSL "$rurl/$pkgfile" | zstd -d > "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
+                esac
+                break
+            fi
+        done
+        if [ -n "$got_packages" ]; then
+            Announce "Refreshed $rurl"
+        else
+            Announce "Couldn't Refresh $rurl" 
+        fi) &
     done
-    if [ -n "$got_packages" ]; then
-        Announce "Fetched Packages of $1"
-    else
-        Announce "Couldn't Fetch Packages of $1" 31
-    fi
 }
 
 help () {
@@ -392,6 +392,9 @@ help () {
     echo "  -n [Name]                    Specify a name for the Output iPA"
     echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
     echo "  -L                           Ignore packages from Canister"   
+    echo "  -k                           Ignore packages from APT Sources"
+    echo "  -d                           Don't install package dependencies"
+    echo "  -D                           Enable refreshing Procursus/Elcubratus repos"  
     echo "  -v                           Enable Verbose Mode"
     echo "  -s                           Silence Everything But Important Errors"
     echo "  -w                           Don't Remove Watch App"
@@ -407,11 +410,8 @@ help () {
         echo
         echo "iOS Only:"
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
-        echo "  -a [Root Password]           Use APT instead of Canister (Leave Blank for Default Password)"
         echo "  -g                           Force Update Apps"
         echo "  -l                           Don't Update Outdated Apps"
-        echo "  -k                           Don't Update APT Sources (Used With -a)"
-        echo "  -d                           Don't install package dependencies (Used With -a)"
     else
         echo
         echo "MacOS/Linux/WSL Only:"
@@ -428,10 +428,10 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFLklv args; do
+while getopts n:i:o:c:b:x:f:p:huSewsrmjDqAdRyUzgFLklv args; do
 
     # STUFF WITH PARAMETERS
-    if [[ "$args" == @(x|a|n|b|p|i|o|c|f|A) ]]; then
+    if [[ "$args" == @(x|n|b|p|i|o|c|f|A) ]]; then
         tmp=( "$OPTARG" )
         until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
             tmp+=( "$(eval "echo \${$OPTIND}")" )
@@ -444,14 +444,13 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFLklv args; do
         if [[ "$args" == @(U|F|R) ]]; then
             Announce "-$args is not supported on your platform" 6
         fi
-    elif [[ "$args" == @(a|x|l|k|d|g) ]]; then
+    elif [[ "$args" == @(x|l|k|g) ]]; then
         Announce "-$args is not supported on your platform" 6
     fi
 
     case "$args" in
 
         # STUFF WITH PARAMETERS
-        a) root_password="$(echo "${tmp[*]}" | xargs)" && apt=1 ;;
         A) split_array repos "${tmp[*]}" ;;
         b) bundle="${tmp[*]}" && run=1 ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
@@ -476,6 +475,8 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFLklv args; do
         y) weak=1 ;;
         L) ignore_canister=1 ;;
         z) no_zip=1 ;;
+        d) no_recurse=1 ;;
+        D) enable_dists=1 ;;
 
         # MACOS/LINUX ONLY SWITCHES
         U) no_update_azule=1 ;;
@@ -483,7 +484,6 @@ while getopts an:i:o:c:b:x:f:p:huSewsrmjqAdRyUzgFLklv args; do
         R) redownload_resources=1 ;;
 
         # iOS ONLY SWITCHES
-        d) no_recurse=1 ;;
         g) outdated=1 ;;
         k) no_apt_update=1 ;;
         l) ignore_outdated=1 ;;
@@ -878,90 +878,15 @@ if [ -n "${files[*]}" ]; then
 
         # NETWORK CHECK
         if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
-    
-        # FETCHING DEBS
-        if [ -n "$apt" ]; then
-            
-            # SET ROOT PASSWORD
-            if [ -z "$root_password" ]; then
-                root_password="alpine"
-            fi
 
-            if [ -z "$no_apt_update" ]; then
-                Announce "Refreshing Sources..."
-                echo "$root_password" | sudo -S apt-get update --allow-insecure-repositories &>/dev/null
-                Verbose "Refreshed Sources" "Couldn't Refresh Sources"
-            fi
-
-            # CLEAN WORK DIRECTORY
-            while read -r g; do echo "$root_password" | sudo -S rm -rf "$g"; done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
-
-            if [ -n "$no_recurse" ]; then
-                apt_packages=$files
-            else
-                for j in "${files[@]}"; do
-
-                    # NO OR
-                    split_array apt_no_or "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep "^\w" | xargs)"
-
-                    # ONLY OR
-                    split_array -d "--" apt_or "$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$j" | grep -A1 "^ |" | cut -d: -f2 | sed "s|>||g" | sed "s|<||g" | xargs)"
-                    for i in "${apt_or[@]}"; do
-                        if ! [[ "$i" =~ firmware ]] && ! [[ "$i" =~ cy+cpu.arm64 ]]; then
-                            for x in $i; do
-                                if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
-                                    found=1
-                                    apt_packages+=("$x")
-                                    break
-                                fi
-                            done
-                            if [ -z "$found" ]; then
-                                for x in $i; do
-                                    Announce "Couldn't find $x on APT"
-                                done
-                            fi
-                            unset "found"
-                        fi
-
-                        # REMOVE UNNEEDED PACKAGES FROM NO OR
-                        for y in $i; do
-                            for x in "${!apt_no_or[@]}"; do
-                                if [ "$y" == "${apt_no_or[x]}" ]; then
-                                    unset "apt_no_or[x]"
-                                    break
-                                fi
-                            done
-                        done
-                    done
-                    split_array apt_packages "${apt_packages[*]} ${apt_no_or[*]}"
-                done
-            fi
-
-            for i in "${!apt_packages[@]}"; do
-                for y in $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances com.ex.substitute org.coolstar.libhooker mobilesubstrate coreutils firmware cy+cpu.arm64 | grep "^\w"); do
-                    if [ "$y" == "${apt_packages[i]}" ]; then
-                        unset "apt_packages[i]"
-                    fi
-                done
-            done
-
-            # DOWNLOADING PACKAGES
-            for x in $(echo "${apt_packages[@]}" | sort -u); do
-                if [ -n "$(apt -qq list "$x" 2>/dev/null)" ]; then
-                    Announce "Fetching $x..." -v
-                    echo "$root_password" | sudo -S apt-get install "$x" -d -y --reinstall --allow-unauthenticated &>/dev/null
-                    Verbose "Fetched $x" "Couldn't Fetch $x" 17
-                else
-                    Announce "Couldn't find $x on APT"
-                fi
-            done
-
-            while read -r g; do
-                ExtractDEB "$g"
-                echo "$root_password" | sudo -S rm -rf "$g"
-            done < <(find "/var/cache/apt/archives" -maxdepth 1 -iname '*.deb')
-        else
+        if [ -z "$no_apt_update" ]; then
             # BUILDING PACKAGE LISTS
+            if [ "$os" == "iOS" ]; then
+                for url in /etc/apt/sources.list.d/*; do
+                    repos+=( "$url" )
+                done
+            fi
+
             mkdir -p "$dir/$tweakid/packagelists"
             for url in "${repos[@]}"; do
                 if [ -e "$(expand "$url")" ]; then
@@ -971,7 +896,7 @@ if [ -n "${files[*]}" ]; then
                         else
                             clean_sources+=( "$line" )
                         fi
-                    done < <(grep "http" "$url" )
+                    done < <(tr -s '[:space:]' '[\n*]' < "$(expand "$url")" | grep '^http' )
                 elif [[ "$url" == "http"* ]]; then
                     if [[ "$url" == */ ]]; then
                         clean_sources+=( "${url%?}" )
@@ -981,18 +906,43 @@ if [ -n "${files[*]}" ]; then
                 fi
             done
 
-            for j in "${clean_sources[@]}"; do
-                GetPackages "$j"
+            for url in "${!clean_sources[@]}"; do
+                if [[ "${clean_sources[url]}" == http*://apt.thebigboss.org* ]]; then
+                    clean_sources[url]="http://apt.thebigboss.org/repofiles/cydia/dists/stable/main/binary-iphoneos-arm/"
+                else
+                    if [[ "${clean_sources[url]}" == http*://apt.procurs.us* ]]; then
+                        unset "clean_sources[url]"
+                        if [ -n "$enable_dists" ]; then
+                            for suite in 1500 1600 1700 1800; do
+                                clean_sources+=( "https://apt.procurs.us/dists/iphoneos-arm64/$suite/main/binary-iphoneos-arm/" )
+                            done
+                        fi
+                    fi
+
+                    if [[ "${clean_sources[url]}" == http*://apt.bingner.com* ]]; then
+                        unset "clean_sources[url]"
+                        if [ -n "$enable_dists" ]; then
+                            for suite in 478.23 550.58 800.00 1443.00; do
+                                clean_sources+=( "https://apt.bingner.com/dists/ios/$suite/main/binary-iphoneos-arm/" )
+                            done
+                        fi
+                    fi
+                fi
             done
+            GetPackages "${clean_sources[@]}"
+        fi
 
-            for i in "${files[@]}"; do
-                if PackageIsAvailable "$i"; then
-
+        mkdir -p "$dir/$tweakid/debs"
+        for i in "${files[@]}"; do
+            if PackageIsAvailable "$i"; then
+                unset "pkgs[@]"
+                if [ -n "$no_recurse" ]; then
+                    FetchDEB -o "$dir/$tweakid/debs/$i.deb" "$i"
+                    pkgs+=( "$dir/$tweakid/debs/$i.deb" )
+                else
                     # RECURSE AND RESOLVE DEPENDENCIES
                     origin_dir="$PWD"
-                    mkdir -p "$dir/$tweakid/debs"
                     unset "array[@]"
-                    unset "pkgs[@]"
                     unset "indexi[@]"
                     array=( "$i" )
                     while [[ -n "${array[*]}" ]]; do
@@ -1001,7 +951,7 @@ if [ -n "${files[*]}" ]; then
                             mkdir -p "$dir/$tweakid/debtemp"
                             cd "$dir/$tweakid/debtemp" || exit
                             for x in "${debs[@]}"; do
-                                GetControl "$x" -s
+                                GetControl "$x"
                                 if [ "$h" == "$(echo "$control" | grep "Package:" | sed 's/^[^ ]* //')" ]; then
                                     Announce "A local version of $h was supplied. Not fetching."
                                     pkg="$x"
@@ -1049,16 +999,16 @@ if [ -n "${files[*]}" ]; then
                             rm -rf "$dir/$tweakid/debtemp"
                         done
                     done
-
-                    # EXTRACTING FETCHED DEBS
-                    for deb in "${pkgs[@]}"; do
-                        ExtractDEB "$deb"
-                    done
-                else
-                    Announce "$i couldn't be found" 18
                 fi
-            done
-        fi
+
+                # EXTRACTING FETCHED DEBS
+                for deb in "${pkgs[@]}"; do
+                    ExtractDEB "$deb"
+                done
+            else
+                Announce "$i couldn't be found" 18
+            fi
+        done
     fi
 
     # DYLIB SELECTION
