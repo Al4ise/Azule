@@ -916,19 +916,23 @@ if [ -n "${files[*]}" ]; then
             for url in "${!clean_sources[@]}"; do
                 if [[ "${clean_sources[url]}" == http*://apt.thebigboss.org* ]]; then
                     clean_sources[url]="http://apt.thebigboss.org/repofiles/cydia/dists/stable/main/binary-iphoneos-arm/"
-                elif [ -z "$disable_dists" ]; then
+                else
                     if [[ "${clean_sources[url]}" == http*://apt.procurs.us* ]]; then
                         unset "clean_sources[url]"
-                        for suite in 1500 1600 1700 1800; do
-                            clean_sources+=( "https://apt.procurs.us/dists/iphoneos-arm64/$suite/main/binary-iphoneos-arm/" )
-                        done
+                        if [ -z "$disable_dists" ]; then
+                            for suite in 1500 1600 1700 1800; do
+                                clean_sources+=( "https://apt.procurs.us/dists/iphoneos-arm64/$suite/main/binary-iphoneos-arm/" )
+                            done
+                        fi
                     fi
 
                     if [[ "${clean_sources[url]}" == http*://apt.bingner.com* ]]; then
                         unset "clean_sources[url]"
-                        for suite in 478.23 550.58 800.00 1443.00; do
-                            clean_sources+=( "https://apt.bingner.com/dists/ios/$suite/main/binary-iphoneos-arm/" )
-                        done
+                        if [ -z "$disable_dists" ]; then
+                            for suite in 478.23 550.58 800.00 1443.00; do
+                                clean_sources+=( "https://apt.bingner.com/dists/ios/$suite/main/binary-iphoneos-arm/" )
+                            done
+                        fi
                     fi
                 fi
             done
