@@ -38,7 +38,7 @@ case "$os" in
             else
                 plutil -key "$1" "$2" 2>/dev/null || status=1
             fi
-            return "$status"
+            return $status
         }
 
         ExtractDEB () {
@@ -82,7 +82,7 @@ case "$os" in
             Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5
             cd "$origin_dir" || exit
             rm -rf "$dir/$tweakid/debtemp"
-            return "$status"
+            return $status
         }
     ;;
 esac
@@ -337,7 +337,7 @@ GetControl () {
     rm -rf "$dir/$tweakid/ctrltmp"
     export control
     cd "$original_dir" || exit
-    return "$status"
+    return $status
 }
 
 GetPackages () {
