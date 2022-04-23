@@ -36,5 +36,4 @@ For the extended usage instructions, run `azule -h` your terminal
 * [screenplaydev](https://github.com/screenplaydev/plutil) - Wrote a Linux alternative for plutil
 * [Majd Alfhaily](https://github.com/majd/ipatool) - Wrote ipatool
 * [dlevi309](https://github.com/dlevi309/ipatool-ios) - Ported ipatool to iOS
-* [CoolStar](https://github.com/coolstar) - Wrote Libhooker
 * [NyaMisty](https://github.com/NyaMisty/fouldecrypt) - Wrote fouldecrypt
