@@ -742,7 +742,7 @@ fi
 
 # SETTING OUTPUT DIRECTORY AND NAME
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
-    if [ "$outdir" != "*.ipa" ]; then
+    if [[ "$outdir" != *".ipa" ]]; then
         if [ -n "$no_zip" ]; then
             if [ -z "$name" ]; then
                 name="$(basename "$ipadir" .ipa)"
