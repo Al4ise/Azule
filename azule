@@ -342,8 +342,7 @@ GetControl () {
 
 GetPackages () {
     for rurl in "$@"; do
-        (Announce "Refreshing $rurl..."
-        for pkgfile in Packages.gz Packages.zst Packages Packages.xz Packages.bz2; do
+        (for pkgfile in Packages.gz Packages.zst Packages Packages.xz Packages.bz2; do
             if curl -sL -o /dev/null --head --fail "$rurl/$pkgfile"; then
                 hash="$(echo -n "$rurl" | shasum | cut -d ' ' -f1)"
                 case "$pkgfile" in
@@ -411,8 +410,6 @@ help () {
     echo "  -r                           Skip Encryption Check"
     echo "  -y                           Insert dylibs as weak"   
     echo "  -q                           Ignore errors"
-    echo "  -m                           Force CydiaSubstrate.framework as a hooking library"
-    echo "  -j                           Force libsubstitute.dylib as a hooking library"   
     echo "  -z                           Don't compress .app file before writing"
     echo "  -h                           Print this help menu"
 
@@ -437,7 +434,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts n:i:o:c:b:x:f:p:huSewsrmjDqAdRyUzgFLklv args; do
+while getopts n:i:o:c:b:x:f:p:huSewsrDqAdRyUzgFLklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|n|b|p|i|o|c|f|A) ]]; then
@@ -472,8 +469,6 @@ while getopts n:i:o:c:b:x:f:p:huSewsrmjDqAdRyUzgFLklv args; do
 
         # SWITCHES
         e) remove_extensions=1 && run=1 ;;
-        j) force_hl="libsubstitute.dylib" ;;
-        m) force_hl="CydiaSubstrate.framework/CydiaSubstrate" ;;
         q) ignore_errors=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
@@ -568,37 +563,26 @@ if curl -I google.com &>/dev/null; then
         fi
     fi
     
-    if [ ! -d "$azule/lib/CydiaSubstrate.framework" ]; then
+    if [ ! -e "$azule/lib/libhooker.dylib" ]; then
         mkdir -p "$azule/lib"
-        Announce "Downloading CydiaSubstrate..."
+        Announce "Downloading Libhooker..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
-        curl -sSL https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
-        ar -x "substrate.deb"
-        tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
-        rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
-        mv "$TMP"/libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
-        mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
-        mv CydiaSubstrate.framework "$azule"/lib/CydiaSubstrate.framework
+        curl -sSL https://repo.theodyssey.dev/debs/org.coolstar.libhooker_1.6.9_iphoneos-arm.deb -o libhooker.deb
+        ar -x "libhooker.deb"
+        tar --strip-components 3 -xf data.tar.xz "./usr/lib/libblackjack.dylib" "./usr/lib/libsubstrate.dylib" "./usr/lib/libhooker.dylib" "./usr/lib/libsubstitute.dylib"
+        mkdir -p "$azule/lib"
+        ldid -r libsubstrate.dylib libhooker.dylib libblackjack.dylib libsubstitute.dylib
+        install_name_tool -change /usr/lib/libhooker.dylib @rpath/libhooker.dylib libblackjack.dylib
+        install_name_tool -change /usr/lib/libhooker.dylib @rpath/libhooker.dylib libsubstitute.dylib
+        install_name_tool -change /usr/lib/libblackjack.dylib @rpath/libblackjack.dylib libsubstitute.dylib
+        install_name_tool -change /usr/lib/libhooker.dylib @rpath/libhooker.dylib libsubstrate.dylib
+        install_name_tool -change /usr/lib/libblackjack.dylib @rpath/libblackjack.dylib libsubstrate.dylib
+        mv libhooker.dylib libblackjack.dylib libsubstrate.dylib libsubstitute.dylib "$azule/lib"
         cd "$azule" || exit
         rm -rf "$TMP"
-        plutil -convert binary1 "$azule/lib/CydiaSubstrate.framework/Info.plist"
-        Announce "Downloaded CydiaSubstrate.framework"
+        Announce "Downloaded Libhooker"
     fi
-
-    if [ ! -e "$azule/lib/libsubstitute.dylib" ]; then
-        TMP="$(mktemp -d)"
-        cd "$TMP" || exit 
-        Announce "Downloading Substitute..."
-        curl -sS https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
-        ar -x "substitute.deb"
-        tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
-        mv libsubstitute.dylib "$azule/lib/libsubstitute.dylib"
-        Announce "Downloaded Substitute"
-        cd "$azule" || exit
-        rm -rf "$TMP"
-    fi
-    cd "$rootdir" || exit
 fi
 
 # VARIABLE CHECK
@@ -758,10 +742,10 @@ fi
 
 # SETTING OUTPUT DIRECTORY AND NAME
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
-    if ! [ "${outdir: -4}" == ".ipa" ]; then
+    if [ "$outdir" != "*.ipa" ]; then
         if [ -n "$no_zip" ]; then
             if [ -z "$name" ]; then
-                name="$(basename "$ipadir")"
+                name="$(basename "$ipadir" .ipa)"
                 custom_name=1
             elif [[ "$name" == *".app" ]]; then
                 outdir="$outdir/$name"
@@ -769,7 +753,7 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
                 outdir="$outdir/$name.app"
             fi
         elif [ -z "$name" ]; then
-            name="$(basename "$ipadir")"
+            name="$(basename "$ipadir" .ipa)"
             custom_name=1
         else
             outdir="$outdir/$name.ipa"
@@ -1012,6 +996,9 @@ if [ -n "${files[*]}" ]; then
 
                 # EXTRACTING FETCHED DEBS
                 for deb in "${pkgs[@]}"; do
+                    if [ -n "$custom_name" ]; then
+                        name+="+$(basename "$deb")"
+                    fi
                     ExtractDEB "$deb"
                 done
             else
@@ -1126,26 +1113,23 @@ if [ -n "${files[*]}" ]; then
     # INJECT HOOKING LIBRARY
     if [ -n "${inject[*]}" ]; then
         for hookinglibrary in "libsubstitute.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
-            unset "hl"
+            if [[ "$hookinglibrary" == @(CydiaSubstrate.framework/CydiaSubstrate|libsubstrate.dylib) ]]; then
+                hl="libsubstrate.dylib"
+                hl_files=( "libhooker.dylib" "libsubstrate.dylib" "libblackjack.dylib" )
+            else
+                hl="$hookinglibrary"
+                hl_files=( "libhooker.dylib" "libsubstitute.dylib" "libblackjack.dylib" )
+            fi
+
             for i in "${inject[@]}"; do
                 for l in $(otool -L "$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
-                        if [ ! -e "$rpath/$hookinglibrary" ]; then
-                            if [ -n "$force_hl" ]; then
-                                hl="$force_hl"
-                            else
-                                hl="$hookinglibrary"
+                        for hl_file in "${hl_files[@]}"; do
+                            if [ ! -e "$hl_file" ]; then
+                                cp -a "$azule/lib/$hl_file" "$rpath" &>/dev/null
+                                Verbose "Copied $hl_file to app directory" "Couldn't copy $hl_file to app directory" 22
                             fi
-
-                            if [[ "$hl" =~ .framework ]]; then
-                                hl_file="$(dirname "$hl")"
-                            else
-                                hl_file="$hl"
-                            fi
-
-                            cp -a "$azule/lib/$hl_file" "$rpath" &>/dev/null
-                            Verbose "Copied $hl_file to app directory" "Couldn't copy $hl_file to app directory" 22
-                        fi
+                        done
 
                         install_name_tool -change "$l" @rpath/"$hl" "$i" &>/dev/null
                         status=$(( status + $? ))
