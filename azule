@@ -1125,7 +1125,7 @@ if [ -n "${files[*]}" ]; then
                 for l in $(otool -L "$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
                         for hl_file in "${hl_files[@]}"; do
-                            if [ ! -e "$hl_file" ]; then
+                            if [ ! -e "$rpath/$hl_file" ]; then
                                 cp -a "$azule/lib/$hl_file" "$rpath" &>/dev/null
                                 Verbose "Copied $hl_file to app directory" "Couldn't copy $hl_file to app directory" 22
                             fi
