@@ -82,6 +82,7 @@ case "$os" in
             Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5
             cd "$origin_dir" || exit
             rm -rf "$dir/$tweakid/debtemp"
+            return "$status"
         }
     ;;
 esac
@@ -336,14 +337,14 @@ GetControl () {
     rm -rf "$dir/$tweakid/ctrltmp"
     export control
     cd "$original_dir" || exit
+    return "$status"
 }
 
 GetPackages () {
     for rurl in "$@"; do
         (Announce "Refreshing $rurl..."
         for pkgfile in Packages.gz Packages.zst Packages Packages.xz Packages.bz2; do
-            unset "got_packages"
-            if [ "$(curl -sSL -o /dev/null -w "%{http_code}" "$rurl/$pkgfile")" -eq 200 ]; then
+            if curl -sL -o /dev/null --head --fail "$rurl/$pkgfile"; then
                 hash="$(echo -n "$rurl" | shasum | cut -d ' ' -f1)"
                 case "$pkgfile" in
                     Packages) curl -sSL "$rurl/$pkgfile" -o "$dir/$tweakid/packagelists/$hash" && got_packages=1 ;;
@@ -357,8 +358,9 @@ GetPackages () {
         done
         if [ -n "$got_packages" ]; then
             Announce "Refreshed $rurl"
+            unset "got_packages"
         else
-            Announce "Couldn't Refresh $rurl" 
+            Announce "Couldn't Refresh $rurl"
         fi) &
     done
     wait
@@ -1197,7 +1199,7 @@ if [ -n "$bundle" ]; then
     while read -r i; do
         CFBundleIdentifier="$(ExtractPlistValue CFBundleIdentifier "$i")"
         if [[ "$CFBundleIdentifier" =~ $orig_bundleid ]]; then
-            CFBundleIdentifier="${CFBundleIdentifier//"$orig_bundleid"/"$bundle"}"
+            CFBundleIdentifier="${CFBundleIdentifier//$orig_bundleid/$bundle}"
             ReplacePlistValue "$CFBundleIdentifier" CFBundleIdentifier "$i"
             status=$(( status + $? ))
         fi
@@ -1255,15 +1257,14 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
 
     # CREATING OUTPUT DIRECTORY
     mkdir -p "$(dirname "$(expand "$outdir")")"
-    if [ -f "$outdir" ]; then rm -rf "$outdir"; fi
+    if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
     if [ -n "$no_zip" ]; then
         Announce "Generating App..."
         mv Payload/"$appname" "$outdir" 
-        status="$?"
+        Verbose "Generated .app at $outdir" "Couldn't generate .app" 25
     else
         Announce "Generating iPA..."
         zip -rq "$outdir" Payload
-        status="$?"
+        Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25
     fi
-    Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25
 fi
