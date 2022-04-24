@@ -74,14 +74,14 @@ case "$os" in
 
         ExtractDEB () {
             origin_dir="$PWD"
-            mkdir -p "$dir/$tweakid/debtemp"
-            cd "$dir/$tweakid/debtemp" || exit
+            mkdir -p "$dir/$tweakid/debtemp/$1"
+            cd "$dir/$tweakid/debtemp/$1" || exit
             Announce "Extracting $(basename "$1")..." -v
             tar xf "$1" || status=1
-            tar -C "$dir/$tweakid/Tweak" -xf data.tar.*
-            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5
+            tar -C "$dir/$tweakid/Tweak" -xf data.tar.* || status=1
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5 -x
             cd "$origin_dir" || exit
-            rm -rf "$dir/$tweakid/debtemp"
+            rm -rf "$dir/$tweakid/debtemp/$1"
             return $status
         }
     ;;
@@ -269,7 +269,7 @@ FetchDEB () {
                 clusters[$g]="$line"
                 s=0 
             fi
-        done < "$dir/$tweakid/packagelists/$hash"
+        done < "$dir/$tweakid/packagelists/$hash" 
 
         for j in "${clusters[@]}"; do
             if [[ "$j" =~ Package:.*$1 ]]; then
@@ -325,19 +325,20 @@ FetchDEB () {
 
 GetControl () {
     original_dir="$PWD"
-    mkdir -p "$dir/$tweakid/ctrltmp"
-    cd "$dir/$tweakid/ctrltmp" || exit
+    ctrlid="$RANDOM"
+    mkdir -p "$dir/$tweakid/ctrltmp/$ctrlid"
+    cd "$dir/$tweakid/ctrltmp/$ctrlid" || exit
     if [ "$os" == "iOS" ]; then
-        dpkg-deb -e "$1" "$dir/$tweakid/ctrltmp" || status=1
+        dpkg-deb -e "$1" "$dir/$tweakid/ctrltmp/$ctrlid" || status=1
     else
         tar xf "$1" || status=1
-        tar -C "$dir/$tweakid/ctrltmp" -xf control.tar.* || status=1
+        tar -C "$dir/$tweakid/ctrltmp/$ctrlid" -xf control.tar.* || status=1
     fi
-    control="$(cat "$dir/$tweakid"/ctrltmp/control)"
-    rm -rf "$dir/$tweakid/ctrltmp"
-    export control
+    control="$(cat "$dir/$tweakid/ctrltmp/$ctrlid/control")"
     cd "$original_dir" || exit
-    return $status
+    rm -rf "$dir/$tweakid/ctrltmp/$ctrlid"
+    export control
+    Verbose "Got Control of $(basename "$1")" "Couldn't get Control of $(basename "$1")" -v -x
 }
 
 GetPackages () {
@@ -394,6 +395,7 @@ help () {
     echo "  -n [Name]                    Specify a name for the Output iPA"
     echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
     echo "  -L                           Ignore packages from Canister"   
+    echo "  -H                           Inject Libhooker in dylibs"   
     echo "  -k                           Ignore packages from APT Sources"
     echo "  -d                           Don't install package dependencies"
     echo "  -D                           Disable refreshing Procursus/Elcubratus repos"  
@@ -406,12 +408,10 @@ help () {
 
     echo "  -v                           Enable Verbose Mode"
     echo "  -s                           Silence Everything But Important Errors"
-    echo "  -w                           Don't Remove Watch App"
+    echo "  -w                           Insert dylibs as weak"
     echo "  -r                           Skip Encryption Check"
-    echo "  -y                           Insert dylibs as weak"   
+    echo "  -y                           Don't remove watch app"
     echo "  -q                           Ignore errors"
-    echo "  -m                           Force CydiaSubstrate.framework as a hooking library"
-    echo "  -j                           Force libsubstitute.dylib as a hooking library"  
     echo "  -z                           Don't compress .app file before writing"
     echo "  -h                           Print this help menu"
 
@@ -436,10 +436,10 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts n:i:o:c:b:x:f:p:huSewsrDmjqAdRyUzgFLklv args; do
+while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdRyUzgFLklv args; do
 
     # STUFF WITH PARAMETERS
-    if [[ "$args" == @(x|n|b|p|i|o|c|f|A) ]]; then
+    if [[ "$args" == @(x|n|b|p|i|o|c|f|A|H) ]]; then
         tmp=( "$OPTARG" )
         until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
             tmp+=( "$(eval "echo \${$OPTIND}")" )
@@ -471,16 +471,15 @@ while getopts n:i:o:c:b:x:f:p:huSewsrDmjqAdRyUzgFLklv args; do
 
         # SWITCHES
         e) remove_extensions=1 && run=1 ;;
-        j) force_hl="libsubstitute.dylib" ;;
-        m) force_hl="CydiaSubstrate.framework/CydiaSubstrate" ;;
         q) ignore_errors=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
         S) fakesign=1 && run=1 ;;
         u) remove_uisd=1 && run=1 ;;
         v) verbose=1 ;;
-        w) no_remove_watchapp=1 ;;
-        y) weak=1 ;;
+        y) no_remove_watchapp=1 ;;
+        w) weak=1 ;;
+        H) inject_libhooker=1 ;;
         L) ignore_canister=1 ;;
         z) no_zip=1 ;;
         d) no_recurse=1 ;;
@@ -567,9 +566,9 @@ if curl -I google.com &>/dev/null; then
         fi
     fi
     
-    if [ ! -d "$azule/lib/CydiaSubstrate.framework" ]; then
+    (if [ ! -d "$azule/lib/CydiaSubstrate.framework" ]; then
         mkdir -p "$azule/lib"
-        Announce "Downloading CydiaSubstrate..."
+        Announce "Downloading CydiaSubstrate.framework..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
         curl -sSL https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
@@ -583,9 +582,9 @@ if curl -I google.com &>/dev/null; then
         rm -rf "$TMP"
         plutil -convert binary1 "$azule/lib/CydiaSubstrate.framework/Info.plist"
         Announce "Downloaded CydiaSubstrate.framework"
-    fi
+    fi) &
 
-    if [ ! -e "$azule/lib/libsubstitute.dylib" ]; then
+    (if [ ! -e "$azule/lib/libsubstitute.dylib" ]; then
         TMP="$(mktemp -d)"
         cd "$TMP" || exit 
         Announce "Downloading Substitute..."
@@ -594,7 +593,32 @@ if curl -I google.com &>/dev/null; then
         tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
         mv libsubstitute.dylib "$azule/lib/libsubstitute.dylib"
         Announce "Downloaded Substitute"
-    fi
+    fi) &
+
+    (if [ ! -e "$azule/lib/Libhooker/libhooker.dylib" ] || [ ! -e "$azule/lib/Libhooker/libblackjack.dylib" ] || [ ! -e "$azule/lib/Libhooker/libsubstitute.dylib" ] || [ ! -e "$azule/lib/Libhooker/libsubstrate.dylib" ]; then
+        mkdir -p "$azule/lib/Libhooker"
+        Announce "Downloading Libhooker..."
+        TMP=$(mktemp -d)
+        cd "$TMP" || exit
+        curl -sSL https://repo.theodyssey.dev/debs/org.coolstar.libhooker_1.6.9_iphoneos-arm.deb -o libhooker.deb
+        ar -x "libhooker.deb"
+        tar --strip-components 3 -xf data.tar.xz "./usr/lib/libblackjack.dylib" "./usr/lib/libsubstrate.dylib" "./usr/lib/libhooker.dylib" "./usr/lib/libsubstitute.dylib"
+        ldid -r libsubstrate.dylib libhooker.dylib libblackjack.dylib libsubstitute.dylib
+        install_name_tool -change /usr/lib/libhooker.dylib @rpath/libhooker.dylib libblackjack.dylib
+        install_name_tool -change /usr/lib/libhooker.dylib @rpath/libhooker.dylib libsubstitute.dylib
+        install_name_tool -change /usr/lib/libblackjack.dylib @rpath/libblackjack.dylib libsubstitute.dylib
+        install_name_tool -change /usr/lib/libhooker.dylib @rpath/libhooker.dylib libsubstrate.dylib
+        install_name_tool -change /usr/lib/libblackjack.dylib @rpath/libblackjack.dylib libsubstrate.dylib
+        install_name_tool -id @rpath/libhooker.dylib libhooker.dylib
+        install_name_tool -id @rpath/libblackjack.dylib libblackjack.dylib
+        install_name_tool -id @rpath/libsubstitute.dylib libsubstitute.dylib
+        install_name_tool -id @rpath/libsubstrate.dylib libsubstrate.dylib
+        mv libhooker.dylib libblackjack.dylib libsubstrate.dylib libsubstitute.dylib "$azule/lib/Libhooker"
+        cd "$azule" || exit
+        rm -rf "$TMP"
+        Announce "Downloaded Libhooker"
+    fi) &
+    wait
     cd "$rootdir" || exit
 fi
 
@@ -947,15 +971,12 @@ if [ -n "${files[*]}" ]; then
                     pkgs+=( "$dir/$tweakid/debs/$i.deb" )
                 else
                     # RECURSE AND RESOLVE DEPENDENCIES
-                    origin_dir="$PWD"
                     unset "array[@]"
                     unset "indexi[@]"
                     array=( "$i" )
                     while [[ -n "${array[*]}" ]]; do
                         for h in "${array[@]}"; do
                             unset "dep_available"
-                            mkdir -p "$dir/$tweakid/debtemp"
-                            cd "$dir/$tweakid/debtemp" || exit
                             for x in "${debs[@]}"; do
                                 GetControl "$x"
                                 if [ "$h" == "$(echo "$control" | grep "Package:" | sed 's/^[^ ]* //')" ]; then
@@ -1001,8 +1022,6 @@ if [ -n "${files[*]}" ]; then
                                     unset "array[x]"
                                 fi
                             done
-                            cd "$origin_dir" || exit
-                            rm -rf "$dir/$tweakid/debtemp"
                         done
                     done
                 fi
@@ -1017,7 +1036,7 @@ if [ -n "${files[*]}" ]; then
             else
                 Announce "$i couldn't be found" 18
             fi
-        done
+        done 
     fi
 
     # DYLIB SELECTION
@@ -1126,26 +1145,33 @@ if [ -n "${files[*]}" ]; then
     # INJECT HOOKING LIBRARY
     if [ -n "${inject[*]}" ]; then
         for hookinglibrary in "libsubstitute.dylib" "CydiaSubstrate.framework/CydiaSubstrate"; do
-            unset "hl"
+            if [ -n "$inject_libhooker" ]; then
+                hl_files=( "Libhooker/libhooker.dylib" "Libhooker/libblackjack.dylib" )
+                if [[ "$hookinglibrary" == @(CydiaSubstrate.framework/CydiaSubstrate|libsubstrate.dylib) ]]; then
+                    hl="libsubstrate.dylib"
+                    hl_files+=( "Libhooker/$hl"  )
+                else
+                    hl="$hookinglibrary"
+                    hl_files+=( "Libhooker/$hl" )
+                fi
+            else
+                hl="$hookinglibrary"
+                if [[ "$hl" =~ .framework ]]; then
+                    hl_files+=( "$(dirname "$hl")" )
+                else
+                    hl_files+=( "$hl" )
+                fi
+            fi
+
             for i in "${inject[@]}"; do
                 for l in $(otool -L "$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
-                        if [ ! -e "$rpath/$hookinglibrary" ]; then
-                            if [ -n "$force_hl" ]; then
-                                hl="$force_hl"
-                            else
-                                hl="$hookinglibrary"
+                        for hl_file in "${hl_files[@]}"; do
+                            if [ ! -e "$rpath/$(lib_basename "$hl_file")" ]; then
+                                cp -a "$azule/lib/$hl_file" "$rpath" &>/dev/null
+                                Verbose "Copied $(lib_basename "$hl_file") to app directory" "Couldn't copy $(lib_basename "$hl_file") to app directory" 22
                             fi
-
-                            if [[ "$hl" =~ .framework ]]; then
-                                hl_file="$(dirname "$hl")"
-                            else
-                                hl_file="$hl"
-                            fi
-
-                            cp -a "$azule/lib/$hl_file" "$rpath" &>/dev/null
-                            Verbose "Copied $hl_file to app directory" "Couldn't copy $hl_file to app directory" 22
-                        fi
+                        done
 
                         install_name_tool -change "$l" @rpath/"$hl" "$i" &>/dev/null
                         status=$(( status + $? ))
