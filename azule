@@ -523,8 +523,7 @@ case "$os" in
     ;;
 esac
 
-# Clear mutually exclusive update flag
-if [ -n "${no_update_azule}" ]; then
+if [ -n "$no_update_azule" ]; then
     unset force_update_azule
 fi
 
@@ -543,7 +542,6 @@ if curl -I google.com &>/dev/null; then
                 Announce "Updating Azule..." -v
                 git pull -q
                 Verbose "Updated Azule" "Couldn't Update Azule" 29
-                # Passing option to disable update prevents infinite recursive update
                 exec "$(resolve_symlink "$0")" -U "$@"
             else
                 Announce "Azule is Up to Date" -v
