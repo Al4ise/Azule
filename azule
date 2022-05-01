@@ -542,7 +542,7 @@ if curl -I google.com &>/dev/null; then
                 Announce "Updating Azule..." -v
                 git pull -q
                 Verbose "Updated Azule" "Couldn't Update Azule" 29
-                exec "$(resolve_symlink "$0")" -U "$@"
+                exec "$(resolve_symlink "$0")" -U "$*"
             else
                 Announce "Azule is Up to Date" -v
             fi
