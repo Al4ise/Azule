@@ -542,7 +542,7 @@ if curl -I google.com &>/dev/null; then
                 Announce "Updating Azule..." -v
                 git pull -q
                 Verbose "Updated Azule" "Couldn't Update Azule" 29
-                exec "$(resolve_symlink "$0")" -U "$*"
+                exec "$(resolve_symlink "$0")" -U "$@"
             else
                 Announce "Azule is Up to Date" -v
             fi
@@ -849,6 +849,10 @@ executable="Payload/$appname/$exec_name"
 checkvar "$exec_name"
 Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
 
+ldid -e "$executable" > "$dir/exec_entitlements"
+ldid -r "$executable" || status=1
+Verbose "Stripped codesign from app executable" "Couldn't strip codesign from app executable" 33 -v
+
 rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
 checkvar "$rpath"
 Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
@@ -1091,22 +1095,33 @@ if [ -n "${files[*]}" ]; then
 
     # MOVING FRAMEWORKS TO APP DIRECTORY
     while read -r i; do
-        if [[ "$i" =~ $dir/Custom ]]; then
-            copy_path="Payload/$appname/${i#"$dir"/"$tweakid"/Custom/}"
-            mkdir -p "$(dirname "$copy_path")"
+        if [[ "$i" == *.bundle/* ]]; then
+            remove="$(echo "$i" | sed 's/.bundle.*//')"
+            new_rpath="$(dirname "@executable_path/${i//$remove/$(basename "$remove")}")"
+            install_name_tool -add_rpath "$new_rpath" "$executable" 2>/dev/null
+            if [[ "$new_rpath" != "${rpaths[*]}" ]]; then
+                rpaths+=( "$new_rpath" )
+                Verbose "Added $new_rpath as new rpath" "Couldn't add $new_rpath as new rpath" -v
+            fi
         else
-            copy_path="${rpath#"$dir"/"$tweakid"/Tweak/}/$(basename "$i")"
-        fi
+            if [[ "$i" =~ $dir/Custom ]]; then
+                copy_path="Payload/$appname/${i#"$dir"/"$tweakid"/Custom/}"
+            else
+                copy_path="${rpath#"$dir"/"$tweakid"/Tweak/}/$(basename "$i")"
+            fi
+            
+            mkdir -p "$(dirname "$copy_path")"
 
-        if [ ! -e "$copy_path" ]; then
-            if [ -e "$i/Info.plist" ]; then
-                cp -a "$i" "$copy_path"
-                Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-                inject+=( "$copy_path/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
-                lib_dylibs+=( "$copy_path/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+            if [ ! -e "$copy_path" ]; then
+                if [ -e "$i/Info.plist" ]; then
+                    cp -a "$i" "$copy_path"
+                    Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+                    inject+=( "$copy_path/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+                    lib_dylibs+=( "$copy_path/$(ExtractPlistValue CFBundleExecutable "$i/Info.plist")" )
+                fi
             fi
         fi
-    done < <(find "$dir/Tweak" "$dir/Custom" ! -type l -iname '*.framework' ! -path '*PreferenceBundles/*' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
+    done < <(find "$dir/Tweak" "$dir/Custom" ! -type l -iname '*.framework' ! -path '*PreferenceBundles/*' ! -path '*.framework/*' 2>/dev/null)
 
     # MERGING APPLICATION SUPPORT
     while read -r i; do
@@ -1272,6 +1287,9 @@ if [ -n "$fakesign" ]; then
     status="$lstat"
     Verbose "Finished Fakesigning" "Couldn't Fakesign App" -x
 fi
+
+ldid -S"$dir/exec_entitlements"
+Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
 
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
