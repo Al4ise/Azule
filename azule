@@ -852,7 +852,6 @@ Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set 
 ldid -e "$executable" > "$dir/exec_entitlements"
 ldid -r "$executable" || status=1
 Verbose "Stripped codesign from app executable" "Couldn't strip codesign from app executable" 33 -v
-
 rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
 checkvar "$rpath"
 Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
@@ -1134,7 +1133,7 @@ if [ -n "${files[*]}" ]; then
         rm -rf "Payload/$appname/$(basename "$i")"
         mv "$i" "Payload/$appname/"
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-    done < <(find "$dir/Tweak/Library/Application Support" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*')
+    done < <(find "$dir/Tweak/Library/Application Support" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
 
 
     # FIXING LINKS
@@ -1288,7 +1287,7 @@ if [ -n "$fakesign" ]; then
     Verbose "Finished Fakesigning" "Couldn't Fakesign App" -x
 fi
 
-ldid -S"$dir/exec_entitlements"
+ldid -S"$dir/exec_entitlements" "$executable"
 Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
 
 # GENERATING IPA
