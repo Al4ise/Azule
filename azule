@@ -1214,7 +1214,7 @@ if [ -n "${files[*]}" ]; then
     fi
 
     # INJECTING LIBRARIES
-    while read -r i; do
+    for i in "${inject[@]}"; do
         id_path="$(idpath "$i")"
         if ! { [[ "${linked[*]}" =~ $i && "${lib_dylibs[*]}" =~ $i ]] || [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; }; then
             if [ -n "$weak" ]; then 
@@ -1226,8 +1226,9 @@ if [ -n "${files[*]}" ]; then
                 if ! [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; then status="1"; fi
                 Verbose "Injected $(lib_basename "$i")" "Couldn't inject $(lib_basename "$i")" 24 -x
             fi
+        lib_dylibs+=( "$i" )
         fi
-    done < <(IFS=$'\n' echo "${inject[@]}" | sort -u)
+    done
 
     # MERGING FOLDERS
     if [ -n "$merge" ]; then
