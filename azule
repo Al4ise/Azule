@@ -471,7 +471,7 @@ while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdRyUzgFLklv args; do
         n) name="${tmp[*]}" ;;
         o) outdir="$(expand "${tmp[*]}")" ;;
         p) displayname="${tmp[*]}" && run=1 ;;
-        x) appleid="${tmp[0]}" && unset "tmp[0]" && appleid_password="${tmp[*]}" ;;
+        x) IPATOOL_EMAIL="${tmp[0]}" && unset "tmp[0]" && IPATOOL_PASSWORD="${tmp[*]}" ;;
 
         # SWITCHES
         e) remove_extensions=1 && run=1 ;;
@@ -673,41 +673,31 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
         if [ -n "$outdated" ] || { [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]]; }; then
             Announce "Update Available"
 
-            # VARIABLE CHECK
-            if [ -z "$appleid" ]; then while
-                printf '[*] Apple ID: '
-                read -r appleid
-                [ -z "$appleid" ] && Announce "No Apple ID Provided"
-            do true; done; fi
+            if [[ ! -e "$azule/ipatool_authenticated" || -n "$IPATOOL_EMAIL" ]]; then
+            
+                # VARIABLE CHECK
+                if [ -z "$IPATOOL_EMAIL" ]; then while
+                    printf '[*] Apple ID: '
+                    read -r IPATOOL_EMAIL
+                    [ -z "$IPATOOL_EMAIL" ] && Announce "No Apple ID Provided"
+                do true; done; fi
 
-            if [ -z "$appleid_password" ]; then while
-                printf '[*] Password for Apple ID: '
-                read -r -s appleid_password
-                [ -z "$appleid_password" ] && Announce "No Password Provided"
-            do true; done; fi
-            printf "\n"
-
-            # DOWNLOAD AND INSTALL UPDATES
-            Announce "Downloading $ipadir..."
-            ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password"
-            t_status="$?"
-            if [ "$t_status" == "1" ]; then
-                Announce "2FA Code Required"
-                if [ -z "$auth_code" ]; then while
-                    printf '[*] Two Factor Authentication Code: '
-                    read -r -s auth_code
-                    [ -z "$auth_code" ] && Announce "No 2FA Code Specified"
+                if [ -z "$IPATOOL_PASSWORD" ]; then while
+                    printf '[*] Password for Apple ID: '
+                    read -r -s IPATOOL_PASSWORD
+                    [ -z "$IPATOOL_PASSWORD" ] && Announce "No Password Provided"
                 do true; done; fi
                 printf "\n"
 
-                Announce "Attempting Download Again..."
-                ipatool-azule download -b "$ipadir" -e "$appleid" -p "$appleid_password$auth_code"
-                status="$?"
-            elif [ "$t_status" != "0" ]; then 
-                status=1
+                ipatool auth login -e "$IPATOOL_EMAIL" -p "$IPATOOL_PASSWORD" &>/dev/null
+                Verbose "Succesfully Authenticated" "Failed Authenticating" 34
+                echo -n > "$azule/ipatool_authenticated"
             fi
 
-            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28 -x
+            # DOWNLOAD AND INSTALL UPDATES
+            Announce "Downloading $ipadir..."
+            ipatool download -b "$ipadir" --purchase
+            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
 
             Announce "Installing $(basename "$dir"/*.ipa) ..."
             appinst "$dir"/*.ipa &>/dev/null
