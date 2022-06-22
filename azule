@@ -10,10 +10,11 @@ rootdir="$PWD"
 case "$(uname -s)" in
     "Linux") os="Linux" ;;
     "Darwin")
-        case "$(uname -m)" in
-            "arm64"|"x86_64") os="MacOS" ;;
-            *) os="iOS" ;;
-        esac
+        if [ "$(sw_vers | grep 'ProductName:' | cut -d: -f2 | xargs)" == "macOS" ]; then
+            os="MacOS"
+        else
+            os="iOS"
+        fi
     ;;
 esac
 
@@ -92,7 +93,7 @@ Announce () {
     unset mute_verbose
 
     if [ -n "$silent_run" ]; then mute_verbose=1; fi
-    
+
     for p in "$@"; do
         if [ "$p" == "-v" ] && [ -z "$verbose" ]; then mute_verbose=1; fi
     done
@@ -364,7 +365,6 @@ GetPackages () {
             unset "got_packages"
         else
             Announce "Couldn't Refresh $rurl"
-            rm -f "$dir/packagelists/$hash"
         fi) &
     done
     wait
@@ -503,6 +503,9 @@ while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdRyUzgFLklv args; do
         *) Announce "Invalid option: $*. Run 'azule -h' for help" 6 ;;
     esac
 done
+
+# ANNOUNCE PLATFORM
+Announce "Platform is $os" -v
 
 # PLATFORM-SPECIFIC VARIABLES
 case "$os" in
@@ -696,12 +699,25 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
 
             # DOWNLOAD AND INSTALL UPDATES
             Announce "Downloading $ipadir..."
-            ipatool download -b "$ipadir" --purchase
+            ipatool download -b "$ipadir" --purchase --output "$dir/$ipadir.ipa"
             Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
 
-            Announce "Installing $(basename "$dir"/*.ipa) ..."
-            appinst "$dir"/*.ipa &>/dev/null
-            Announce "Installed $(basename "$dir"/*.ipa)"
+            # CHECK & PATCH MINIMUM VERSION
+            mkdir -p "$dir/minverplist/"
+            unzip "$dir/$ipadir.ipa" "Payload/*.app/Info.plist" -d "$dir/minverplist/" &>/dev/null
+            current_ios_version="$(sw_vers | grep 'ProductVersion:' | cut -d: -f2 | xargs)"
+            orig_min_version="$(ExtractPlistValue MinimumOSVersion "$dir"/minverplist/Payload/*.app/Info.plist)"
+            if verlt "$current_ios_version" "$orig_min_version"; then
+                cd "$dir/minverplist/" || exit
+                ReplacePlistValue "$current_ios_version" MinimumOSVersion Payload/*.app/Info.plist
+                changed_min_version=1
+                zip -u "$dir/$ipadir.ipa" Payload/*.app/Info.plist
+                Verbose "Temporarily changed $ipadir's Minimum OS Version to $current_ios_version" "Couldn't change $ipadir's Minimum OS Version" 35 -v
+                cd "$dir" || exit
+            fi
+            Announce "Installing $ipadir ..."
+            appinst "$dir/$ipadir.ipa" &>/dev/null
+            Announce "Installed $ipadir"
         else
             Announce "No Updates Available"
         fi
@@ -1278,8 +1294,15 @@ if [ -n "$fakesign" ]; then
     Verbose "Finished Fakesigning" "Couldn't Fakesign App" -x
 fi
 
+# RESTORING ENTITLEMENTS
 ldid -S"$dir/exec_entitlements" "$executable"
 Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
+
+# RESTORING MIN VERSION
+if [ "$os" == "iOS" ] && [ -n "$changed_min_version" ]; then
+    ReplacePlistValue "$orig_min_version" MinimumOSVersion Payload/"$appname"/Info.plist
+    Verbose "Restored Original Minimum Version" "Couldn't Restore Original Minimum Version" -v
+fi
 
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
