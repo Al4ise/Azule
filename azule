@@ -6,88 +6,6 @@ shopt -s extglob
 # SAVE INITIAL DIRECTORY
 rootdir="$PWD"
 
-# SET PLATFORM
-case "$(uname -s)" in
-    "Linux") os="Linux" ;;
-    "Darwin")
-        if [ "$(sw_vers | grep 'ProductName:' | cut -d: -f2 | xargs)" == "macOS" ]; then
-            os="MacOS"
-        else
-            os="iOS"
-        fi
-    ;;
-esac
-
-# PLATFORM-SPECIFIC FUNCTIONS
-case "$os" in
-    iOS)
-        RemovePlistKey () {
-            plutil -remove -key "$1" "$2" &>/dev/null
-        }
-
-        ReplacePlistValue () {
-            plutil -value "$1" -key "$2" "$3" &>/dev/null
-        }
-
-        ExtractPlistValue () {
-            status=0
-            if [ -n "$3" ]; then
-                plutil -key "$1" "$2" >> tmp 2>/dev/null || status=1
-                plutil -convert xml1 tmp &>/dev/null || status=1
-                sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp || status=1
-                rm tmp &>/dev/null || status=1
-            else
-                plutil -key "$1" "$2" 2>/dev/null || status=1
-            fi
-            return $status
-        }
-
-        ExtractDEB () {
-            Announce "Extracting $(basename "$1")..."
-            dpkg -x "$1" "$dir/Tweak"
-            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 3
-        }
-    ;;
-
-    MacOS|Linux)
-        RemovePlistKey () {
-            plutil -remove "$1" "$2" &>/dev/null
-        }
-
-        ReplacePlistValue () {
-            plutil -replace "$2" -string "$1" "$3" &>/dev/null
-        }
-
-        ExtractPlistValue () {
-            if [ -n "$3" ]; then
-                psed="key"
-            else
-                psed="string"
-            fi
-            value="$(plutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<$psed>\(.*\)<\/$psed>.*/\1/p" 2>/dev/null)"
-
-            if [ -n "$value" ]; then
-                echo "$value"
-            else
-                return 1
-            fi
-        }
-
-        ExtractDEB () {
-            origin_dir="$PWD"
-            mkdir -p "$dir/debtemp/$1"
-            cd "$dir/debtemp/$1" || exit
-            Announce "Extracting $(basename "$1")..." -v
-            ar -x "$1" || status=1
-            tar -C "$dir/Tweak" -xf data.tar.* || status=1
-            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5 -x
-            cd "$origin_dir" || exit
-            rm -rf "$dir/debtemp/$1"
-            return $status
-        }
-    ;;
-esac
-
 # UNIVERSAL FUNCTIONS
 Announce () {
     unset mute_verbose
@@ -417,6 +335,7 @@ help () {
     echo "  -y                           Don't remove watch app"
     echo "  -q                           Ignore errors"
     echo "  -z                           Don't compress .app file before writing"
+    echo "  -j                           Allow for Azule to be ran as root [Not Reccommended]"
     echo "  -h                           Print this help menu"
 
     if [ "$os" == "iOS" ]; then
@@ -435,12 +354,97 @@ help () {
     cleanup
 }
 
+# SET PLATFORM
+case "$(uname -s)" in
+    "Linux") os="Linux" ;;
+    "Darwin")
+        if [ "$(sw_vers | grep 'ProductName:' | cut -d: -f2 | xargs)" == "macOS" ]; then
+            os="MacOS"
+        else
+            os="iOS"
+        fi
+    ;;
+esac
+
+# ANNOUNCE PLATFORM
+Announce "Platform is $os" -v
+
+# PLATFORM-SPECIFIC FUNCTIONS
+case "$os" in
+    iOS)
+        RemovePlistKey () {
+            plutil -remove -key "$1" "$2" &>/dev/null
+        }
+
+        ReplacePlistValue () {
+            plutil -value "$1" -key "$2" "$3" &>/dev/null
+        }
+
+        ExtractPlistValue () {
+            status=0
+            if [ -n "$3" ]; then
+                plutil -key "$1" "$2" >> tmp 2>/dev/null || status=1
+                plutil -convert xml1 tmp &>/dev/null || status=1
+                sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp || status=1
+                rm tmp &>/dev/null || status=1
+            else
+                plutil -key "$1" "$2" 2>/dev/null || status=1
+            fi
+            return $status
+        }
+
+        ExtractDEB () {
+            Announce "Extracting $(basename "$1")..."
+            dpkg -x "$1" "$dir/Tweak"
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 3
+        }
+    ;;
+
+    MacOS|Linux)
+        RemovePlistKey () {
+            plutil -remove "$1" "$2" &>/dev/null
+        }
+
+        ReplacePlistValue () {
+            plutil -replace "$2" -string "$1" "$3" &>/dev/null
+        }
+
+        ExtractPlistValue () {
+            if [ -n "$3" ]; then
+                psed="key"
+            else
+                psed="string"
+            fi
+            value="$(plutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<$psed>\(.*\)<\/$psed>.*/\1/p" 2>/dev/null)"
+
+            if [ -n "$value" ]; then
+                echo "$value"
+            else
+                return 1
+            fi
+        }
+
+        ExtractDEB () {
+            origin_dir="$PWD"
+            mkdir -p "$dir/debtemp/$1"
+            cd "$dir/debtemp/$1" || exit
+            Announce "Extracting $(basename "$1")..." -v
+            ar -x "$1" || status=1
+            tar -C "$dir/Tweak" -xf data.tar.* || status=1
+            Verbose "Extracted $(basename "$1")" "Couldn't extract $(basename "$1")" 5 -x
+            cd "$origin_dir" || exit
+            rm -rf "$dir/debtemp/$1"
+            return $status
+        }
+    ;;
+esac
+
 # CLEAN ON EXIT
 trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdRyUzgFLklv args; do
+while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdjRyUzgFLklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|n|b|p|i|o|c|f|A|H) ]]; then
@@ -475,6 +479,7 @@ while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdRyUzgFLklv args; do
 
         # SWITCHES
         e) remove_extensions=1 && run=1 ;;
+        j) allow_root_run=1 ;;
         q) ignore_errors=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
@@ -504,8 +509,10 @@ while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdRyUzgFLklv args; do
     esac
 done
 
-# ANNOUNCE PLATFORM
-Announce "Platform is $os" -v
+# USER CHECK
+if [ "$(id -u)" == "0" ] && [ -z "$allow_root_run" ]; then
+    Announce "Azule should not be ran as root. Use '-j' to overwrite" 36
+fi 
 
 # PLATFORM-SPECIFIC VARIABLES
 case "$os" in
@@ -1072,29 +1079,35 @@ if [ -n "${files[*]}" ]; then
             Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
         else
             identifier="$(ExtractPlistValue Filter "${i%.*}".plist)"
-            split_array idtypes "$(ExtractPlistValue Filter "${i%.*}".plist key)"
-            for idtype in "${idtypes[@]}"; do
-                case "$idtype" in
-                    Bundles)
-                        ipabundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
-                        if [[ "$identifier" =~ $ipabundleid ]]; then
-                            inject+=( "$copy_path" )
-                            cp -a "$i" "$copy_path"
-                            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-                            break
-                        fi
-                    ;;
+            if ! [[ "$identifier" =~ ^[0-9a-zA-Z]+$ ]]; then
+                inject+=( "$copy_path" )
+                lib_dylibs+=( "$copy_path" )
+                cp -a "$i" "$copy_path"
+                Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+            else
+                split_array idtypes "$(ExtractPlistValue Filter "${i%.*}".plist key)"
+                for idtype in "${idtypes[@]}"; do
+                    case "$idtype" in
+                        Bundles)
+                            if [[ "$identifier" =~ $(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist) ]]; then
+                                inject+=( "$copy_path" )
+                                cp -a "$i" "$copy_path"
+                                Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+                                break
+                            fi
+                        ;;
 
-                    Executables)
-                        if [[ "$identifier" =~ $(basename "$executable") ]]; then
-                            inject+=( "$copy_path" )
-                            cp -a "$i" "$copy_path"
-                            Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-                            break
-                        fi
-                    ;;
-                esac
-            done
+                        Executables)
+                            if [[ "$identifier" =~ $(basename "$executable") ]]; then
+                                inject+=( "$copy_path" )
+                                cp -a "$i" "$copy_path"
+                                Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+                                break
+                            fi
+                        ;;
+                    esac
+                done
+            fi
         fi
     done < <(find "$dir/Tweak" "$dir/Custom" ! -type l -iname '*.dylib' 2>/dev/null)
 
