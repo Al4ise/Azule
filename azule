@@ -373,22 +373,43 @@ Announce "Platform is $os" -v
 case "$os" in
     iOS)
         RemovePlistKey () {
-            plutil -remove -key "$1" "$2" &>/dev/null
+            if ! command -v plutil &> /dev/null
+            then
+                plutil -remove -key "$1" "$2" &>/dev/null
+            else
+                pistlutil -remove -key "$1" "$2" &>/dev/null
+            fi
         }
 
         ReplacePlistValue () {
-            plutil -value "$1" -key "$2" "$3" &>/dev/null
+            if ! command -v plutil &> /dev/null
+            then
+                plutil -value "$1" -key "$2" "$3" &>/dev/null
+            else
+                pistlutil -value "$1" -key "$2" "$3" &>/dev/null
+            fi
         }
 
         ExtractPlistValue () {
             status=0
             if [ -n "$3" ]; then
-                plutil -key "$1" "$2" >> tmp 2>/dev/null || status=1
-                plutil -convert xml1 tmp &>/dev/null || status=1
+                if ! command -v plutil &> /dev/null
+                then
+                    plutil -key "$1" "$2" >> tmp 2>/dev/null || status=1
+                    plutil -convert xml1 tmp &>/dev/null || status=1
+                else
+                    plistutil -key "$1" "$2" >> tmp 2>/dev/null || status=1
+                    plistutil -convert xml1 tmp &>/dev/null || status=1
+                fi
                 sed -n "s/.*<key>\(.*\)<\/key>.*/\1/p" tmp || status=1
                 rm tmp &>/dev/null || status=1
             else
-                plutil -key "$1" "$2" 2>/dev/null || status=1
+                if ! command -v plutil &> /dev/null
+                then
+                    plutil -key "$1" "$2" 2>/dev/null || status=1
+                else
+                    plistutil -key "$1" "$2" 2>/dev/null || status=1
+                fi
             fi
             return $status
         }
@@ -402,11 +423,21 @@ case "$os" in
 
     MacOS|Linux)
         RemovePlistKey () {
-            plutil -remove "$1" "$2" &>/dev/null
+            if ! command -v plutil &> /dev/null
+            then
+                plutil -remove "$1" "$2" &>/dev/null
+            else
+                plistutil -remove "$1" "$2" &>/dev/null
+            fi
         }
 
         ReplacePlistValue () {
-            plutil -replace "$2" -string "$1" "$3" &>/dev/null
+            if ! command -v plutil &> /dev/null
+            then
+                plutil -replace "$2" -string "$1" "$3" &>/dev/null
+            else
+                plistutil -replace "$2" -string "$1" "$3" &>/dev/null
+            fi
         }
 
         ExtractPlistValue () {
@@ -415,7 +446,12 @@ case "$os" in
             else
                 psed="string"
             fi
-            value="$(plutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<$psed>\(.*\)<\/$psed>.*/\1/p" 2>/dev/null)"
+            if ! command -v plutil &> /dev/null
+            then
+                value="$(plutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<$psed>\(.*\)<\/$psed>.*/\1/p" 2>/dev/null)"
+            else
+                value="$(plistutil -extract "$1" xml1 -o - "$2" | sed -n "s/.*<$psed>\(.*\)<\/$psed>.*/\1/p" 2>/dev/null)"
+            fi
 
             if [ -n "$value" ]; then
                 echo "$value"
@@ -598,7 +634,12 @@ if curl -I google.com &>/dev/null; then
         mv CydiaSubstrate.framework "$azule"/lib/CydiaSubstrate.framework
         cd "$azule" || exit
         rm -rf "$TMP"
-        plutil -convert binary1 "$azule/lib/CydiaSubstrate.framework/Info.plist"
+        if ! command -v plutil &> /dev/null
+        then
+            plutil -convert binary1 "$azule/lib/CydiaSubstrate.framework/Info.plist"
+        else
+            plistutil -convert binary1 "$azule/lib/CydiaSubstrate.framework/Info.plist"
+        fi
         Announce "Downloaded CydiaSubstrate.framework"
     fi) &
 
