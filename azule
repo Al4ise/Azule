@@ -358,7 +358,7 @@ help () {
 case "$(uname -s)" in
     "Linux") os="Linux" ;;
     "Darwin")
-        if [ "$(sw_vers | grep 'ProductName:' | cut -d: -f2 | xargs)" == "macOS" ]; then
+        if [[ "$(sw_vers -productName)" =~ ^(Mac OS X|macOS|macOS Server)$ ]]; then
             os="MacOS"
         else
             os="iOS"
