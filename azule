@@ -358,7 +358,7 @@ help () {
 case "$(uname -s)" in
     "Linux") os="Linux" ;;
     "Darwin")
-        if [ "$(sw_vers | grep 'ProductName:' | cut -d: -f2 | xargs)" == "macOS" ]; then
+        if [[ "$(sw_vers -productName)" =~ ^(Mac OS X|macOS|macOS Server)$ ]]; then
             os="MacOS"
         else
             os="iOS"
@@ -712,7 +712,7 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
             # CHECK & PATCH MINIMUM VERSION
             mkdir -p "$dir/minverplist/"
             unzip "$dir/$ipadir.ipa" "Payload/*.app/Info.plist" -d "$dir/minverplist/" &>/dev/null
-            current_ios_version="$(sw_vers | grep 'ProductVersion:' | cut -d: -f2 | xargs)"
+            current_ios_version="$(sw_vers -productVersion)"
             orig_min_version="$(ExtractPlistValue MinimumOSVersion "$dir"/minverplist/Payload/*.app/Info.plist)"
             if verlt "$current_ios_version" "$orig_min_version"; then
                 cd "$dir/minverplist/" || exit
@@ -752,7 +752,7 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
             if [ -z "$dexec" ]; then
 
                 # CHOOSING FOULDECRYPT BINARY
-                ios_version="$(sw_vers | grep "ProductVersion: *" | cut -d: -f2 | xargs)"
+                ios_version="$(sw_vers -productVersion)"
                 if [[ "${ios_version%.*}" -lt "14" ]] || [[ ! -e "/.installed_taurine" && ! -e "/.installed_unc0ver" ]]; then
                     decrypt="fouldecrypt.tfp0"
                 elif [ -e "/.installed_taurine" ]; then
