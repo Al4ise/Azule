@@ -288,6 +288,29 @@ GetPackages () {
     wait
 }
 
+ipatool_auth () {
+    if [[ ! -e "$azule/ipatool_authenticated" || -n "$IPATOOL_EMAIL" ]]; then
+            
+        # VARIABLE CHECK
+        if [ -z "$IPATOOL_EMAIL" ]; then while
+            printf '[*] Apple ID: '
+            read -r IPATOOL_EMAIL
+            [ -z "$IPATOOL_EMAIL" ] && Announce "No Apple ID Provided"
+        do true; done; fi
+
+        if [ -z "$IPATOOL_PASSWORD" ]; then while
+            printf '[*] Password for Apple ID: '
+            read -r -s IPATOOL_PASSWORD
+            [ -z "$IPATOOL_PASSWORD" ] && Announce "No Password Provided"
+        do true; done; fi
+        printf "\n"
+
+        ipatool auth login -e "$IPATOOL_EMAIL" -p "$IPATOOL_PASSWORD" &>/dev/null
+        Verbose "Succesfully Authenticated" "Failed Authenticating" 34
+        echo -n > "$azule/ipatool_authenticated"
+    fi
+}
+
 help () {
     echo "Usage: azule [essential arguements] [modifiers]"
     echo
@@ -682,46 +705,47 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
         # UPDATING OUTDATED APPS
         if [ -n "$outdated" ] || { [ -n "$latestv" ] && [[ "$latestv" != "$currentv" || -n "$thinned" ]]; }; then
             Announce "Update Available"
-
-            if [[ ! -e "$azule/ipatool_authenticated" || -n "$IPATOOL_EMAIL" ]]; then
-            
-                # VARIABLE CHECK
-                if [ -z "$IPATOOL_EMAIL" ]; then while
-                    printf '[*] Apple ID: '
-                    read -r IPATOOL_EMAIL
-                    [ -z "$IPATOOL_EMAIL" ] && Announce "No Apple ID Provided"
-                do true; done; fi
-
-                if [ -z "$IPATOOL_PASSWORD" ]; then while
-                    printf '[*] Password for Apple ID: '
-                    read -r -s IPATOOL_PASSWORD
-                    [ -z "$IPATOOL_PASSWORD" ] && Announce "No Password Provided"
-                do true; done; fi
-                printf "\n"
-
-                ipatool auth login -e "$IPATOOL_EMAIL" -p "$IPATOOL_PASSWORD" &>/dev/null
-                Verbose "Succesfully Authenticated" "Failed Authenticating" 34
-                echo -n > "$azule/ipatool_authenticated"
-            fi
+            ipatool_auth
 
             # DOWNLOAD AND INSTALL UPDATES
             Announce "Downloading $ipadir..."
             ipatool download -b "$ipadir" --purchase --output "$dir/$ipadir.ipa"
-            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28
+            status="$?"
+            if [ "$status" == "1" ]; then
+                rm -f "$azule/ipatool_authenticated"
+                ipatool_auth
+                ipatool download -b "$ipadir" --purchase --output "$dir/$ipadir.ipa"
+                status="$?"
+            fi
+            
+            Verbose "Downloaded $ipadir" "Couldn't Download $ipadir" 28 -x
 
-            # CHECK & PATCH MINIMUM VERSION
+            # CHECK & PATCH MINIMUM VERSION AND TEMPORARILY REMOVE UISUPPORTEDDEVICES
             mkdir -p "$dir/minverplist/"
             unzip "$dir/$ipadir.ipa" "Payload/*.app/Info.plist" -d "$dir/minverplist/" &>/dev/null
+            cd "$dir/minverplist/" || exit
+            cp -a Payload/*.app/Info.plist "$dir"/minverplist/
+
+            UISupportedDevices1="$(ExtractPlistValue UISupportedDevices "$dir"/minverplist/Payload/*.app/Info.plist)"
+            if [ -n "$UISupportedDevices1" ]; then
+                RemovePlistKey UISupportedDevices Payload/*.app/Info.plist
+                Verbose "Temporarily Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app" 37 -v 
+            fi
+
             current_ios_version="$(sw_vers -productVersion)"
             orig_min_version="$(ExtractPlistValue MinimumOSVersion "$dir"/minverplist/Payload/*.app/Info.plist)"
             if verlt "$current_ios_version" "$orig_min_version"; then
-                cd "$dir/minverplist/" || exit
                 ReplacePlistValue "$current_ios_version" MinimumOSVersion Payload/*.app/Info.plist
-                changed_min_version=1
-                zip -u "$dir/$ipadir.ipa" Payload/*.app/Info.plist
                 Verbose "Temporarily changed $ipadir's Minimum OS Version to $current_ios_version" "Couldn't change $ipadir's Minimum OS Version" 35 -v
-                cd "$dir" || exit
+                changed_min_version=1
             fi
+
+            if [ -n "$changed_min_version" ] || [ -n "$UISupportedDevices1" ]; then
+                zip -u "$dir/$ipadir.ipa" Payload/*.app/Info.plist &>/dev/null
+            fi
+
+            cd "$dir" || exit
+
             Announce "Installing $ipadir ..."
             appinst "$dir/$ipadir.ipa" &>/dev/null
             Announce "Installed $ipadir"
@@ -1312,9 +1336,9 @@ ldid -S"$dir/exec_entitlements" "$executable"
 Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
 
 # RESTORING MIN VERSION
-if [ "$os" == "iOS" ] && [ -n "$changed_min_version" ]; then
-    ReplacePlistValue "$orig_min_version" MinimumOSVersion Payload/"$appname"/Info.plist
-    Verbose "Restored Original Minimum Version" "Couldn't Restore Original Minimum Version" -v
+if [ "$os" == "iOS" ] && [[ -n "$changed_min_version" || -n "$UISupportedDevices1" ]]; then
+    mv "$dir"/minverplist/Info.plist Payload/"$appname"/Info.plist
+    Verbose "Restored Original Plist Values" "Couldn't Restore Original Plist Values" -v
 fi
 
 # GENERATING IPA
