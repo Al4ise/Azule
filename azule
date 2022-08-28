@@ -1178,7 +1178,6 @@ if [ -n "${files[*]}" ]; then
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
     done < <(find "$dir/Tweak/Library/Application Support" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
 
-
     # FIXING LINKS
     for i in "${inject[@]}"; do
         ldid -r -M "$i" &>/dev/null
