@@ -374,6 +374,7 @@ help () {
         echo
         echo "iOS Only:"
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
+        echo "  -z [Country Code]            Specify country code for ipatool"
         echo "  -g                           Force Update Apps"
         echo "  -l                           Don't Update Outdated Apps"
     else
@@ -476,10 +477,10 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdjRyUgFLklv args; do
+while getopts Hn:i:o:c:b:x:f:p:z:huSewsrDHqAdjRyUgFLklv args; do
 
     # STUFF WITH PARAMETERS
-    if [[ "$args" == @(x|n|b|p|i|o|c|f|A|H) ]]; then
+    if [[ "$args" == @(x|n|b|p|i|o|c|f|A|H|z) ]]; then
         tmp=( "$OPTARG" )
         until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
             tmp+=( "$(eval "echo \${$OPTIND}")" )
@@ -492,7 +493,7 @@ while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdjRyUgFLklv args; do
         if [[ "$args" == @(U|F) ]]; then
             Announce "-$args is not supported on your platform" 6
         fi
-    elif [[ "$args" == @(x|l|g) ]]; then
+    elif [[ "$args" == @(x|l|g|z) ]]; then
         Announce "-$args is not supported on your platform" 6
     fi
 
@@ -508,6 +509,7 @@ while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdjRyUgFLklv args; do
         o) outdir="$(expand "${tmp[*]}")" ;;
         p) displayname="${tmp[*]}" && run=1 ;;
         x) IPATOOL_EMAIL="${tmp[0]}" && unset "tmp[0]" && IPATOOL_PASSWORD="${tmp[*]}" ;;
+        z) country_code="-c ${tmp[*]}" ;;
 
         # SWITCHES
         e) remove_extensions=1 && run=1 ;;
@@ -717,12 +719,12 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
 
             # DOWNLOAD AND INSTALL UPDATES
             Announce "Downloading $ipadir..."
-            ipatool download -b "$ipadir" --purchase --output "$dir/$ipadir.ipa"
+            ipatool download -b "$ipadir" $country_code --purchase --output "$dir/$ipadir.ipa" 
             status="$?"
             if [ "$status" == "1" ]; then
                 rm -f "$azule/ipatool_authenticated"
                 ipatool_auth
-                ipatool download -b "$ipadir" --purchase --output "$dir/$ipadir.ipa"
+                ipatool download -b "$ipadir" $country_code --purchase --output "$dir/$ipadir.ipa"
                 status="$?"
             fi
             
