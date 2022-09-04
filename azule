@@ -311,6 +311,16 @@ ipatool_auth () {
     fi
 }
 
+decompress () {
+    if [ -z "$full_unzipped" ]; then
+        if [ -z "$1" ] || [ "$2" != "-n" ]; then
+            unzip -qq -n "$ipadir" "$1" -d "$dir"
+        else
+            unzip -qq -o "$ipadir" "$1" -d "$dir" 
+        fi
+    fi
+}
+
 help () {
     echo "Usage: azule [essential arguements] [modifiers]"
     echo
@@ -340,7 +350,7 @@ help () {
     echo "  -n [Name]                    Specify a name for the Output iPA"
     echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
     echo "  -L                           Ignore packages from Canister"   
-    echo "  -H                           Inject Libhooker in dylibs"   
+    echo "  -H                           Inject Libhooker in dylibs (highly discouraged)"   
     echo "  -k                           Ignore packages from APT Sources"
     echo "  -d                           Don't install package dependencies"
     echo "  -D                           Disable refreshing Procursus/Elcubratus repos"  
@@ -357,7 +367,6 @@ help () {
     echo "  -r                           Skip Encryption Check"
     echo "  -y                           Don't remove watch app"
     echo "  -q                           Ignore errors"
-    echo "  -z                           Don't compress .app file before writing"
     echo "  -j                           Allow for Azule to be ran as root [Not Reccommended]"
     echo "  -h                           Print this help menu"
 
@@ -467,7 +476,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdjRyUzgFLklv args; do
+while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdjRyUgFLklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|n|b|p|i|o|c|f|A|H) ]]; then
@@ -513,7 +522,6 @@ while getopts Hn:i:o:c:b:x:f:p:huSewsrDHqAdjRyUzgFLklv args; do
         w) weak=1 ;;
         H) inject_libhooker=1 ;;
         L) ignore_canister=1 ;;
-        z) no_zip=1 ;;
         d) no_recurse=1 ;;
         D) disable_dists=1 ;;
 
@@ -722,7 +730,7 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
 
             # CHECK & PATCH MINIMUM VERSION AND TEMPORARILY REMOVE UISUPPORTEDDEVICES
             mkdir -p "$dir/minverplist/"
-            unzip "$dir/$ipadir.ipa" "Payload/*.app/Info.plist" -d "$dir/minverplist/" &>/dev/null
+            unzip -qq "$dir/$ipadir.ipa" "Payload/*.app/Info.plist" -d "$dir/minverplist/"
             cd "$dir/minverplist/" || exit
             cp -a Payload/*.app/Info.plist "$dir"/minverplist/
 
@@ -741,7 +749,7 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
             fi
 
             if [ -n "$changed_min_version" ] || [ -n "$UISupportedDevices1" ]; then
-                zip -u "$dir/$ipadir.ipa" Payload/*.app/Info.plist &>/dev/null
+                zip -qq -u "$dir/$ipadir.ipa" Payload/*.app/Info.plist
             fi
 
             cd "$dir" || exit
@@ -805,18 +813,20 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
     status="$qv"
     Verbose "Finished Decryption" "Could Not decrypt $qv files. This may cause problems later on" -x
 
+    # RESTORING MIN VERSION
+    if [[ -n "$changed_min_version" || -n "$UISupportedDevices1" ]]; then
+        mv "$dir"/minverplist/Info.plist Payload/"$appname"/Info.plist
+        Verbose "Restored Original Plist Values" "Couldn't Restore Original Plist Values" -v
+    fi
+
+    full_unzipped=1
+
 elif [ -e "$ipadir" ]; then
-    if [ "${ipadir: -4}" == ".ipa" ]; then
-
-        # EXTRACTING IPA
-        Announce "Extracting iPA..."
-        unzip -q "$ipadir" -d "$dir"
-        Verbose "IPA extracted" "Couldn't extract IPA" 11
-
-    elif [ "${ipadir: -4}" == ".app" ]; then
+    if [ "${ipadir: -4}" == ".app" ]; then
         mkdir -p "$dir/Payload"
         cp -R "$ipadir" "$dir/Payload" &>/dev/null
         Verbose "Copied App to Work Directory" "Couldn't Copy App to Work Directory" 11
+        full_unzipped=1
     fi
 else
     Announce "Invalid App" 8
@@ -825,16 +835,7 @@ fi
 # SETTING OUTPUT DIRECTORY AND NAME
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
     if [[ "$outdir" != *".ipa" ]]; then
-        if [ -n "$no_zip" ]; then
-            if [ -z "$name" ]; then
-                name="$(basename "$ipadir" .ipa)"
-                custom_name=1
-            elif [[ "$name" == *".app" ]]; then
-                outdir="$outdir/$name"
-            else
-                outdir="$outdir/$name.app"
-            fi
-        elif [ -z "$name" ]; then
+        if [ -z "$name" ]; then
             name="$(basename "$ipadir" .ipa)"
             custom_name=1
         else
@@ -843,46 +844,12 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
     fi
 fi
 
-# REMOVING PLUGINS
-if [ -n "$remove_extensions" ]; then
-    Announce "Removing Extensions..."
-    while read -r i; do
-        rm -rf "$i"
-        Verbose "Removed Extensions" "Couldn't Remove Extensions"
-        break
-    done < <(find "$dir/Payload" -mindepth 2 -maxdepth 2 -type d -name PlugIns)
-fi
-
-# REMOVING WATCH APP
-if [ -z "$no_remove_watchapp" ]; then
-    while read -r i; do
-        DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
-        if [ "$DTPlatformName" == "watchos" ]; then
-            if [ -z "$status" ]; then
-                Announce "Removing Watch App..." -v
-            fi
-            rm -rf "$(dirname "$i")"
-            status=$(( status + $? ))
-        fi
-    done < <(find "$dir/Payload" -name "Info.plist")
-
-    if [ -n "$status" ]; then
-         Verbose "Removed Watch App" "Couldn't Remove Watch App" -x -v
-    else
-        watch_app="$(find "$dir/Payload" -type d -name Watch.app -o -name Watch -o -name WatchApp.app)"
-        if [ -n "$watch_app" ]; then
-            rm -rf "$watch_app"
-            Verbose "Removed Watch App" "Couldn't Remove Watch App" -v
-        else
-            Announce "There Was No Watch App To Remove" -v
-        fi
-    fi
-fi
-
 # SETTING APP VARIABLES
+decompress Payload/*.app/Info.plist
 appname="$(basename Payload/*.app)"
 exec_name="$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
 executable="Payload/$appname/$exec_name"
+decompress "$executable"
 checkvar "$exec_name"
 Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
 
@@ -895,16 +862,7 @@ Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath"
 mkdir -p "$rpath"
 
 # ENCRYPTION CHECK
-if [ -z "$ignore_encrypted" ]; then
-    while read -r i; do
-        CFBundleExecutable="$(ExtractPlistValue CFBundleExecutable "$i")"
-        if [ -n "$CFBundleExecutable" ] && otool -l "$(dirname "$i")/$CFBundleExecutable" | grep -q 'cryptid 1'; then
-            if [ "$(dirname "$i")/$CFBundleExecutable" == "$executable" ]; then
-                Announce "Fatal Error: $(dirname "$i")/$CFBundleExecutable is encrypted" 14
-            fi
-        fi
-    done < <(find Payload/"$appname" -name "Info.plist")
-fi
+if [ -z "$ignore_encrypted" ] && otool -l "$executable" | grep -q 'cryptid 1'; then Announce "Fatal Error: $executable is encrypted" 14; fi
 
 # PROCESSING FILES
 if [ -n "${files[*]}" ]; then
@@ -958,6 +916,7 @@ if [ -n "${files[*]}" ]; then
         if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
 
         if [ -z "$no_apt_update" ]; then
+
             # BUILDING PACKAGE LISTS
             if [ "$os" == "iOS" ]; then
                 for url in /etc/apt/sources.list.d/*; do
@@ -1232,7 +1191,11 @@ if [ -n "${files[*]}" ]; then
                     hl_files+=( "$hl" )
                 fi
             fi
-
+            
+            for hl_file in "${hl_files[@]}"; do
+                decompress "$rpath/$(lib_basename "$hl_file")" &>/dev/null
+            done
+            
             for i in "${inject[@]}"; do
                 for l in $(otool -L "$i" | cut -d ' ' -f1); do
                     if [[ "$l" =~ $hookinglibrary ]]; then
@@ -1293,6 +1256,8 @@ if [ -n "$bundle" ]; then
     checkvar "$orig_bundleid"
     Verbose "Obtained Original BundleID" "Couldn't Obtain Original BundleID"
 
+    decompress "*Info.plist*" -n
+
     while read -r i; do
         CFBundleIdentifier="$(ExtractPlistValue CFBundleIdentifier "$i")"
         if [[ "$CFBundleIdentifier" =~ $orig_bundleid ]]; then
@@ -1319,6 +1284,7 @@ fi
 
 # FAKESIGNING
 if [ -n "$fakesign" ]; then
+    decompress "*.framework/" "*.dylib"
     Announce "Fakesigning iPA..."
         while read -r i; do
             ldid -S -M "$i" &>/dev/null
@@ -1334,44 +1300,60 @@ fi
 ldid -S"$dir/exec_entitlements" "$executable"
 Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
 
-# RESTORING MIN VERSION
-if [ "$os" == "iOS" ] && [[ -n "$changed_min_version" || -n "$UISupportedDevices1" ]]; then
-    mv "$dir"/minverplist/Info.plist Payload/"$appname"/Info.plist
-    Verbose "Restored Original Plist Values" "Couldn't Restore Original Plist Values" -v
-fi
-
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
     if [ -n "$custom_name" ]; then
-        if [ -n "$no_zip" ]; then
-            outdir="$outdir/$name.app"
-        else
-            outdir="$outdir/$name.ipa"
-        fi
+        outdir="$outdir/$name.ipa"
     fi
 
     # SHORTEN OUTPUT NAME IF NEEDED
     if [[ ${#outdir} -gt 264 ]]; then
         outdir="${outdir::${#outdir}-4}"
         characters_to_remove=$(( ${#outdir} - 264 ))
-        if [ -z "$no_zip" ]; then
-            outdir="${outdir::${#outdir}-$characters_to_remove}.ipa"
-        else
-            outdir="${outdir::${#outdir}-$characters_to_remove}.app"
-        fi
+        outdir="${outdir::${#outdir}-$characters_to_remove}.ipa"
         Announce "Shortened File Name"
     fi
 
     # CREATING OUTPUT DIRECTORY
     mkdir -p "$(dirname "$(expand "$outdir")")"
     if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
-    if [ -n "$no_zip" ]; then
-        Announce "Generating App..."
-        mv Payload/"$appname" "$outdir" 
-        Verbose "Generated .app at $outdir" "Couldn't generate .app" 25
+    Announce "Generating iPA..."
+        
+    if [ -n "$full_unzipped" ]; then
+        zip -r -qq "$outdir" Payload
+        status="$?"
     else
-        Announce "Generating iPA..."
-        zip -rq "$outdir" Payload
-        Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25
+        cp "$ipadir" "$outdir"
+
+        while read -r k; do
+            ziparr+=( "$k" )
+        done < <(find Payload)
+
+        zip -qq -u "$outdir" "${ziparr[@]}"
+        status="$?"
     fi
+
+    # REMOVING WATCH APP
+    if [ -z "$no_remove_watchapp" ]; then
+        decompress "*Info.plist*" -n
+        while read -r i; do
+            DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
+            if [ "$DTPlatformName" == "watchos" ]; then
+                if [ -z "$status" ]; then
+                    Announce "Removing Watch App..." -v
+                fi
+                zip -qq -d "$outdir" "$(dirname "$i")/*"
+                status=$(( status + $? ))
+            fi
+        done < <(find "$dir/Payload" -name "Info.plist")
+        Verbose "Removed Watch App" "Couldn't Remove Watch App" -x -v
+    fi
+
+    # REMOVING EXTENSIONS
+    if [ -n "$remove_extensions" ]; then
+        zip -qq -d "$outdir" "Payload/*.app/PlugIns/*"
+        Verbose "Removed Extensions" "Couldn't Remove Extensions" 
+    fi
+
+    Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25
 fi
