@@ -350,7 +350,6 @@ help () {
     echo "  -n [Name]                    Specify a name for the Output iPA"
     echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
     echo "  -L                           Ignore packages from Canister"   
-    echo "  -H                           Inject Libhooker in dylibs (highly discouraged)"   
     echo "  -k                           Ignore packages from APT Sources"
     echo "  -d                           Don't install package dependencies"
     echo "  -D                           Disable refreshing Procursus/Elcubratus repos"  
@@ -367,14 +366,16 @@ help () {
     echo "  -r                           Skip Encryption Check"
     echo "  -y                           Don't remove watch app"
     echo "  -q                           Ignore errors"
-    echo "  -j                           Allow for Azule to be ran as root [Not Reccommended]"
+    echo "  -H                           Inject Libhooker in dylibs [Highly Discouraged]"
+    echo "  -j                           Allow for Azule to be ran as root [Discouraged]"
+    echo "  -z                           Use Legacy Compression (outputs smaller .ipa files, but runs slower)"
     echo "  -h                           Print this help menu"
 
     if [ "$os" == "iOS" ]; then
         echo
         echo "iOS Only:"
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
-        echo "  -z [Country Code]            Specify country code for ipatool"
+        echo "  -C [Country Code]            Specify country code for ipatool"
         echo "  -g                           Force Update Apps"
         echo "  -l                           Don't Update Outdated Apps"
     else
@@ -405,6 +406,7 @@ Announce "Platform is $os" -v
 # PLATFORM-SPECIFIC FUNCTIONS
 case "$os" in
     iOS)
+        country_code="US"
         RemovePlistKey () {
             plutil -remove -key "$1" "$2" &>/dev/null
         }
@@ -477,7 +479,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts Hn:i:o:c:b:x:f:p:z:huSewsrDHqAdjRyUgFLklv args; do
+while getopts Hn:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgFLklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|n|b|p|i|o|c|f|A|H|z) ]]; then
@@ -493,7 +495,7 @@ while getopts Hn:i:o:c:b:x:f:p:z:huSewsrDHqAdjRyUgFLklv args; do
         if [[ "$args" == @(U|F) ]]; then
             Announce "-$args is not supported on your platform" 6
         fi
-    elif [[ "$args" == @(x|l|g|z) ]]; then
+    elif [[ "$args" == @(x|l|g|C) ]]; then
         Announce "-$args is not supported on your platform" 6
     fi
 
@@ -509,7 +511,7 @@ while getopts Hn:i:o:c:b:x:f:p:z:huSewsrDHqAdjRyUgFLklv args; do
         o) outdir="$(expand "${tmp[*]}")" ;;
         p) displayname="${tmp[*]}" && run=1 ;;
         x) IPATOOL_EMAIL="${tmp[0]}" && unset "tmp[0]" && IPATOOL_PASSWORD="${tmp[*]}" ;;
-        z) country_code="-c ${tmp[*]}" ;;
+        C) country_code="${tmp[*]}" ;;
 
         # SWITCHES
         e) remove_extensions=1 && run=1 ;;
@@ -526,6 +528,7 @@ while getopts Hn:i:o:c:b:x:f:p:z:huSewsrDHqAdjRyUgFLklv args; do
         L) ignore_canister=1 ;;
         d) no_recurse=1 ;;
         D) disable_dists=1 ;;
+        z) legacy_compression=1 ;;
 
         # MACOS/LINUX ONLY SWITCHES
         U) no_update_azule=1 ;;
@@ -678,7 +681,7 @@ if [ -z "$outdir" ]; then
     Announce "No Output Directory Specified. Run 'azule -h' for help" 27
 elif [ -z "$ipadir" ]; then
     Announce "No iPA Specified. Run 'azule -h' for help" 27
-elif [[ -z "$run" ]] && [[ "$os" != "iOS" || -e "$ipadir" ]] ; then
+elif [[ -z "$run" ]] && [[ "$os" != "iOS" || ( -e "$ipadir" && ( "$ipadir" == "*.ipa" || "$ipadir" == "*.app" ) ) ]] ; then
     Announce "No Modifiers Specified. Run 'azule -h' for help" 27
 fi
 
@@ -690,7 +693,8 @@ Verbose "Temporary Directory has been created" "Couldn't create Temporary Direct
 cd "$dir" || exit
 
 # INSTALLING UPDATES AND DECRYPTION
-if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
+if [ "$os" == "iOS" ] && [[ ! -e "$ipadir" || ( -e "$ipadir" && ! ( "$ipadir" == "*.ipa" || "$ipadir" == "*.app" ) ) ]]; then
+    ipadir="$(basename "$ipadir")"
     if [ -z "$ignore_outdated" ]; then
         Announce "Checking for App Updates..."
 
@@ -706,7 +710,7 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
         
         # CHECK IF APP IS OUTDATED
         if ! curl -I google.com &>/dev/null; then Announce "No Connection to the Internet" 26; fi
-        latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir" | jq -r '.results[].version')"
+        latestv="$(curl -s "http://itunes.apple.com/lookup?bundleId=$ipadir&country=$country_code" | jq -r '.results[].version')"
         currentv="$(ExtractPlistValue CFBundleShortVersionString "$info_plist")"
 
         # VARIABLE CHECK
@@ -719,12 +723,12 @@ if [[ ! -e "$ipadir" && "$os" == "iOS" ]]; then
 
             # DOWNLOAD AND INSTALL UPDATES
             Announce "Downloading $ipadir..."
-            ipatool download -b "$ipadir" $country_code --purchase --output "$dir/$ipadir.ipa" 
+            ipatool download -b "$ipadir" -c "$country_code" --purchase --output "$dir/$ipadir.ipa" 
             status="$?"
             if [ "$status" == "1" ]; then
                 rm -f "$azule/ipatool_authenticated"
                 ipatool_auth
-                ipatool download -b "$ipadir" $country_code --purchase --output "$dir/$ipadir.ipa"
+                ipatool download -b "$ipadir" -c "$country_code" --purchase --output "$dir/$ipadir.ipa"
                 status="$?"
             fi
             
@@ -829,6 +833,13 @@ elif [ -e "$ipadir" ]; then
         cp -R "$ipadir" "$dir/Payload" &>/dev/null
         Verbose "Copied App to Work Directory" "Couldn't Copy App to Work Directory" 11
         full_unzipped=1
+    elif [ "${ipadir: -4}" == ".ipa" ] && [ -n "$legacy_compression" ]; then
+
+        # EXTRACTING IPA
+        Announce "Extracting iPA..."
+        unzip -q "$ipadir" -d "$dir"
+        Verbose "IPA extracted" "Couldn't extract IPA" 11
+        full_unzipped=1
     fi
 else
     Announce "Invalid App" 8
@@ -847,24 +858,25 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
 fi
 
 # SETTING APP VARIABLES
-decompress Payload/*.app/Info.plist
-appname="$(basename Payload/*.app)"
-exec_name="$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
-executable="Payload/$appname/$exec_name"
-decompress "$executable"
-checkvar "$exec_name"
-Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
+if [ -n "$run" ]; then
+    decompress Payload/*.app/Info.plist
+    appname="$(basename Payload/*.app)"
+    exec_name="$(ExtractPlistValue CFBundleExecutable Payload/"$appname"/Info.plist)"
+    executable="Payload/$appname/$exec_name"
+    decompress "$executable"
+    checkvar "$exec_name"
+    Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
+    ldid -e "$executable" > "$dir/exec_entitlements"
+    ldid -r "$executable" || status=1
+    Verbose "Stripped codesign from app executable" "Couldn't strip codesign from app executable" 33 -v
+    rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
+    checkvar "$rpath"
+    Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
+    mkdir -p "$rpath"
 
-ldid -e "$executable" > "$dir/exec_entitlements"
-ldid -r "$executable" || status=1
-Verbose "Stripped codesign from app executable" "Couldn't strip codesign from app executable" 33 -v
-rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
-checkvar "$rpath"
-Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
-mkdir -p "$rpath"
-
-# ENCRYPTION CHECK
-if [ -z "$ignore_encrypted" ] && otool -l "$executable" | grep -q 'cryptid 1'; then Announce "Fatal Error: $executable is encrypted" 14; fi
+    # ENCRYPTION CHECK
+    if [ -z "$ignore_encrypted" ] && otool -l "$executable" | grep -q 'cryptid 1'; then Announce "Fatal Error: $executable is encrypted" 14; fi
+fi
 
 # PROCESSING FILES
 if [ -n "${files[*]}" ]; then
@@ -1299,8 +1311,10 @@ if [ -n "$fakesign" ]; then
 fi
 
 # RESTORING ENTITLEMENTS
-ldid -S"$dir/exec_entitlements" "$executable"
-Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
+if [ -n "$run" ]; then
+    ldid -S"$dir/exec_entitlements" "$executable"
+    Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
+fi
 
 # GENERATING IPA
 if [ -n "$run" ] || [ -n "$bfplist" ]; then
@@ -1334,6 +1348,7 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
         zip -qq -u "$outdir" "${ziparr[@]}"
         status="$?"
     fi
+    Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25 -X
 
     # REMOVING WATCH APP
     if [ -z "$no_remove_watchapp" ]; then
@@ -1344,8 +1359,11 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
                 if [ -z "$status" ]; then
                     Announce "Removing Watch App..." -v
                 fi
-                zip -qq -d "$outdir" "$(dirname "$i")/*"
-                status=$(( status + $? ))
+                if [ -d "$(dirname "$i")" ]; then
+                    zip -qq -d "$outdir" "$(dirname "$i")/*" &>/dev/null
+                    stat="$?"
+                    if [ "$stat" != "12" ]; then status=$(( status + "$stat" )); fi
+                fi
             fi
         done < <(find "$dir/Payload" -name "Info.plist")
         Verbose "Removed Watch App" "Couldn't Remove Watch App" -x -v
@@ -1356,6 +1374,4 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
         zip -qq -d "$outdir" "Payload/*.app/PlugIns/*"
         Verbose "Removed Extensions" "Couldn't Remove Extensions" 
     fi
-
-    Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25
 fi
