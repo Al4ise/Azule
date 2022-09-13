@@ -146,7 +146,7 @@ PackageIsAvailable () {
         return 1
     fi
 
-    if [ -z "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
+    if [ -z "$(curl -sSk "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
         unset "sources[@]"
         while read -r line; do
             sources+=( "$line" )
@@ -171,8 +171,8 @@ FetchDEB () {
     fi
 
     Announce "Fetching $1..." -v
-    if [ -z "$ignore_canister" ] && [ -n "$(curl -sS "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
-        canister="$(curl -sSL "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
+    if [ -z "$ignore_canister" ] && [ -n "$(curl -sSk "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
+        canister="$(curl -sSLk "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
         repo="$(echo "$canister" | jq -r '.data[].repository.uri')"
         clatestv="$(echo "$canister" | jq -r '.data[].latestVersion')"
 
@@ -194,7 +194,7 @@ FetchDEB () {
             for j in "${clusters[@]}"; do
                 if [[ "$j" =~ Package:.*$1 ]]; then
                     if [[ "$j" =~ Version:.*$clatestv ]]; then
-                        curl -sSL "$repo/$(echo "$j" | grep 'Filename:' | sed 's/^.*: //')" -o "$outname"
+                        curl -sSLk "$repo/$(echo "$j" | grep 'Filename:' | sed 's/^.*: //')" -o "$outname"
                         Verbose "Fetched $1" "Couldn't fetch $1" 1
                         fetched=1
                         break
@@ -234,7 +234,7 @@ FetchDEB () {
                 fi
             done
         done
-        curl -sSL "$pfilename" -o "$outname"
+        curl -sSLk "$pfilename" -o "$outname"
         Verbose "Fetched $1" "Couldn't fetch $1" 30
         fetched=1
     fi
@@ -266,14 +266,14 @@ GetControl () {
 GetPackages () {
     for rurl in "$@"; do
         (for pkgfile in Packages.gz Packages.zst Packages Packages.xz Packages.bz2; do
-            if curl -sL -o /dev/null --head --fail "$rurl/$pkgfile"; then
+            if curl -sLk -o /dev/null --head --fail "$rurl/$pkgfile"; then
                 hash="$(echo -n "$rurl" | shasum | cut -d ' ' -f1)"
                 case "$pkgfile" in
-                    Packages) curl -sSL "$rurl/$pkgfile" -o "$dir/packagelists/$hash" && got_packages=1 ;;
-                    Packages.xz) curl -sSL "$rurl/$pkgfile" | unxz -d > "$dir/packagelists/$hash" && got_packages=1 ;;
-                    Packages.gz) curl -sSL "$rurl/$pkgfile" | gzip -d > "$dir/packagelists/$hash" && got_packages=1 ;;
-                    Packages.bz2) curl -sSL "$rurl/$pkgfile" | bzip2 -d > "$dir/packagelists/$hash" && got_packages=1 ;;
-                    Packages.zst) curl -sSL "$rurl/$pkgfile" | zstd -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages) curl -sSLk "$rurl/$pkgfile" -o "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.xz) curl -sSLk "$rurl/$pkgfile" | unxz -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.gz) curl -sSLk "$rurl/$pkgfile" | gzip -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.bz2) curl -sSLk "$rurl/$pkgfile" | bzip2 -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.zst) curl -sSLk "$rurl/$pkgfile" | zstd -d > "$dir/packagelists/$hash" && got_packages=1 ;;
                 esac
                 break
             fi
@@ -609,7 +609,7 @@ if curl -I google.com &>/dev/null; then
             Announce "Fetching toolchain..."
             TMP=$(mktemp -d)
             cd "$TMP" || exit
-            curl -LsSO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
+            curl -LsSOk https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma
             Announce "Fetched Toolchain"
             Announce "Setting Up Toolchain..."
             tar -xf linux-ios-arm64e-clang-toolchain.tar.lzma
@@ -625,7 +625,7 @@ if curl -I google.com &>/dev/null; then
         Announce "Downloading CydiaSubstrate.framework..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
-        curl -sSL https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
+        curl -sSLk https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
         ar -x "substrate.deb"
         tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
         rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
@@ -642,7 +642,7 @@ if curl -I google.com &>/dev/null; then
         TMP="$(mktemp -d)"
         cd "$TMP" || exit 
         Announce "Downloading Substitute..."
-        curl -sS https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
+        curl -sSk https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
         ar -x "substitute.deb"
         tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
         mv libsubstitute.dylib "$azule/lib/libsubstitute.dylib"
@@ -654,7 +654,7 @@ if curl -I google.com &>/dev/null; then
         Announce "Downloading Libhooker..."
         TMP=$(mktemp -d)
         cd "$TMP" || exit
-        curl -sSL https://repo.theodyssey.dev/debs/org.coolstar.libhooker_1.6.9_iphoneos-arm.deb -o libhooker.deb
+        curl -sSLk https://repo.theodyssey.dev/debs/org.coolstar.libhooker_1.6.9_iphoneos-arm.deb -o libhooker.deb
         ar -x "libhooker.deb"
         tar --strip-components 3 -xf data.tar.xz "./usr/lib/libblackjack.dylib" "./usr/lib/libsubstrate.dylib" "./usr/lib/libhooker.dylib" "./usr/lib/libsubstitute.dylib"
         ldid -r libsubstrate.dylib libhooker.dylib libblackjack.dylib libsubstitute.dylib
@@ -878,7 +878,7 @@ if [ -n "$run" ]; then
     else
         Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
     fi
-    
+
     mkdir -p "$rpath"
 
     # ENCRYPTION CHECK
@@ -1363,9 +1363,6 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
         while read -r i; do
             DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
             if [ "$DTPlatformName" == "watchos" ]; then
-                if [ -z "$status" ]; then
-                    Announce "Removing Watch App..." -v
-                fi
                 if [ -d "$(dirname "$i")" ]; then
                     zip -qq -d "$outdir" "$(dirname "$i")/*" &>/dev/null
                     stat="$?"
@@ -1378,7 +1375,9 @@ if [ -n "$run" ] || [ -n "$bfplist" ]; then
 
     # REMOVING EXTENSIONS
     if [ -n "$remove_extensions" ]; then
-        zip -qq -d "$outdir" "Payload/*.app/PlugIns/*"
-        Verbose "Removed Extensions" "Couldn't Remove Extensions" 
+        zip -qq -d "$outdir" "Payload/*.app/PlugIns/*" &>/dev/null
+        stat="$?"
+        if [ "$stat" != "12" ]; then status="$stat"; fi
+        Verbose "Removed Extensions" "Couldn't Remove Extensions" -x
     fi
 fi
