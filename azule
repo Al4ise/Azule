@@ -876,6 +876,7 @@ if [ -n "$run" ]; then
         install_name_tool -add_rpath "${rpath//*.app/@executable_path}" "$executable" 2>/dev/null
         Verbose "New App rpath is ${rpath//*.app/@executable_path}" "Couldn't set new app rpath" 13 -v
     else
+        checkvar "$rpath"
         Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
     fi
 
