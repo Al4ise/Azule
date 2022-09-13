@@ -1077,7 +1077,7 @@ if [ -n "${files[*]}" ]; then
             copy_path="${rpath#"$dir"/"$tweakid"/Tweak/}/$(basename "$i")"
         fi
 
-        if ! [ -e "${i%.*}.plist" ]; then
+        if ! [ -e "${i%.dylib}.plist" ]; then
             inject+=( "$copy_path" )
             lib_dylibs+=( "$copy_path" )
             cp -a "$i" "$copy_path"
@@ -1250,7 +1250,7 @@ if [ -n "${files[*]}" ]; then
                 Verbose "Injected $(lib_basename "$i") as weak" "Couldn't inject $(lib_basename "$i")" 24 -x
             else
                 insert_dylib --inplace --no-strip-codesig "$id_path" "$executable" &>/dev/null
-                if ! [[ "$(otool -L "$executable" | cut -d ' ' -f1 | xargs)" =~ $id_path ]]; then status="1"; fi
+                if ! [[ "$(otool -L "$executable")" =~ $id_path ]]; then status="1"; fi
                 Verbose "Injected $(lib_basename "$i")" "Couldn't inject $(lib_basename "$i")" 24 -x
             fi
         lib_dylibs+=( "$i" )
