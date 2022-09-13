@@ -870,8 +870,15 @@ if [ -n "$run" ]; then
     ldid -r "$executable" || status=1
     Verbose "Stripped codesign from app executable" "Couldn't strip codesign from app executable" 33 -v
     rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
-    checkvar "$rpath"
-    Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
+    
+    if ! checkvar "$rpath"; then
+        rpath="Payload/$appname/Frameworks"
+        install_name_tool -add_rpath "${rpath//*.app/@executable_path}" "$executable" 2>/dev/null
+        Verbose "New App rpath is ${rpath//*.app/@executable_path}" "Couldn't set new app rpath" 13 -v
+    else
+        Verbose "App rpath is ${rpath//*.app/@executable_path}" "Couldn't set app rpath" 13 -v
+    fi
+    
     mkdir -p "$rpath"
 
     # ENCRYPTION CHECK
