@@ -1,0 +1,290 @@
+#!/bin/bash
+
+# FUNCTIONS
+PackageIsAvailable() {
+    if ! [ "$1" ]; then
+        return 1
+    fi
+
+    if [ -z "$(curl -sSk "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
+        unset "sources[@]"
+        while read -r line; do
+            sources+=( "$line" )
+        done < <(grep -l "$1" "$dir"/packagelists/*)
+
+        if [ -z "${sources[*]}" ]; then
+            return 1
+        else
+            export sources
+        fi
+    fi
+}
+
+verlt() {
+    if [ "$1" = "$2" ]; then
+        return 1
+    else
+        [  "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ]
+    fi
+}
+
+FetchDEB() {
+    unset fetched
+    if [ "$1" == "-o" ]; then
+        shift
+        outname="$1"
+        shift
+    else
+        outname="tweak.deb"
+    fi
+
+    Announce "Fetching $1..." -v
+    if [ -z "$ignore_canister" ] && [ -n "$(curl -sSk "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri&query=$1" | jq -r .data[])" ]; then
+        canister="$(curl -sSLk "https://api.canister.me/v1/community/packages/search?responseFields=repository.uri,latestVersion&query=$1")"
+        repo="$(echo "$canister" | jq -r '.data[].repository.uri')"
+        clatestv="$(echo "$canister" | jq -r '.data[].latestVersion')"
+
+        hash="$(echo -n "$repo" | shasum | cut -d ' ' -f1)"
+        if [ ! -e "$dir/packagelists/$hash" ]; then
+            GetPackages "$repo"
+        fi
+        if [ -e "$dir/packagelists/$hash" ]; then
+            while read -r line; do
+                if [[ $line == "" ]]; then ((g++)) && s=1; fi
+                if [[ $s == 0 ]]; then
+                    clusters[$g]="${clusters[$g]}"$'\n'"$line"
+                else  
+                    clusters[$g]="$line"
+                    s=0 
+                fi
+            done < "$dir/packagelists/$hash" 
+
+            for j in "${clusters[@]}"; do
+                if [[ "$j" =~ Package:.*$1 ]]; then
+                    if [[ "$j" =~ Version:.*$clatestv ]]; then
+                        curl -sSLk "$repo/$(echo "$j" | grep 'Filename:' | sed 's/^.*: //')" -o "$outname"
+                        Verbose "Fetched $1" "Couldn't fetch $1" 1
+                        fetched=1
+                        break
+                    fi
+                fi
+            done
+        fi
+    fi
+
+    if [ -z "$fetched" ] && [ -n "${repos[*]}" ]; then
+        for j in "${sources[@]}"; do
+            unset "packages[@]"
+            unset "g"
+            while read -r line; do
+                if [[ $line == "" ]]; then ((g++)) && s=1; fi
+                if [[ $s == 0 ]]; then
+                    packages[$g]="${packages[$g]}"$'\n'"$line"
+                else  
+                    packages[$g]="$line"
+                    s=0 
+                fi
+            done < "$j"
+
+            for r in "${clean_sources[@]}"; do
+                if [ "$(basename "$j")" == "$(echo -n "$r" | shasum | cut -d ' ' -f1)" ]; then
+                    repo="$r"
+                fi
+            done
+
+            for p in "${packages[@]}"; do
+                if [[ "$p" =~ Package:.*$1 ]]; then
+                    currentversion="$(echo "$p" | grep "Version: *" | cut -d ' ' -f2)"
+                    if verlt "$latestversion" "$currentversion"; then
+                        latestversion="$currentversion"
+                        pfilename="$repo/$(echo "$p" | grep 'Filename:' | sed 's/^.*: //')"
+                    fi
+                fi
+            done
+        done
+        curl -sSLk "$pfilename" -o "$outname"
+        Verbose "Fetched $1" "Couldn't fetch $1" 30
+        fetched=1
+    fi
+
+    if [ -z "$fetched" ]; then
+        Announce "Couldn't find $1"
+        return 1
+    fi
+}
+
+GetControl() {
+    original_dir="$PWD"
+    ctrlid="$RANDOM"
+    mkdir -p "$dir/ctrltmp/$ctrlid"
+    cd "$dir/ctrltmp/$ctrlid" || exit
+    if [ "$os" == "iOS" ]; then
+        dpkg-deb -e "$1" "$dir/ctrltmp/$ctrlid" || status=1
+    else
+        ar -x "$1" || status=1
+        tar -C "$dir/ctrltmp/$ctrlid" -xf control.tar.* || status=1
+    fi
+    control="$(cat "$dir/ctrltmp/$ctrlid/control")"
+    cd "$original_dir" || exit
+    rm -rf "$dir/ctrltmp/$ctrlid"
+    export control
+    Verbose "Got Control of $(basename "$1")" "Couldn't get Control of $(basename "$1")" -v -x
+}
+
+GetPackages() {
+    for rurl in "$@"; do
+        (for pkgfile in Packages.gz Packages.zst Packages Packages.xz Packages.bz2; do
+            if curl -sLk -o /dev/null --head --fail "$rurl/$pkgfile"; then
+                hash="$(echo -n "$rurl" | shasum | cut -d ' ' -f1)"
+                case "$pkgfile" in
+                    Packages) curl -sSLk "$rurl/$pkgfile" -o "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.xz) curl -sSLk "$rurl/$pkgfile" | unxz -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.gz) curl -sSLk "$rurl/$pkgfile" | gzip -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.bz2) curl -sSLk "$rurl/$pkgfile" | bzip2 -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                    Packages.zst) curl -sSLk "$rurl/$pkgfile" | zstd -d > "$dir/packagelists/$hash" && got_packages=1 ;;
+                esac
+                break
+            fi
+        done
+        if [ -n "$got_packages" ]; then
+            Announce "Refreshed $rurl"
+            unset "got_packages"
+        else
+            Announce "Couldn't Refresh $rurl"
+        fi) &
+    done
+    wait
+}
+
+# NETWORK CHECK
+if ! network_check; then Announce "No Connection to the Internet" 26; fi
+
+if [ -z "$no_apt_update" ]; then
+
+    # BUILDING PACKAGE LISTS
+    if [ "$os" == "iOS" ]; then
+        for url in /etc/apt/sources.list.d/*; do
+            repos+=( "$url" )
+        done
+    fi
+
+    mkdir -p "$dir/packagelists"
+    for url in "${repos[@]}"; do
+        if [ -e "$(expand "$url")" ]; then
+            while read -r line; do
+                if [[ "$line" == */ ]]; then
+                    clean_sources+=( "${line%?}" )
+                else
+                    clean_sources+=( "$line" )
+                fi
+            done < <(tr -s '[:space:]' '[\n*]' < "$(expand "$url")" | grep '^http' )
+        elif [[ "$url" == "http"* ]]; then
+            if [[ "$url" == */ ]]; then
+                clean_sources+=( "${url%?}" )
+            else
+                clean_sources+=( "$url" )
+            fi
+        fi
+    done
+
+    for url in "${!clean_sources[@]}"; do
+        if [[ "${clean_sources[url]}" == http*://apt.thebigboss.org* ]]; then
+            clean_sources[url]="http://apt.thebigboss.org/repofiles/cydia/dists/stable/main/binary-iphoneos-arm/"
+        else
+            if [[ "${clean_sources[url]}" == http*://apt.procurs.us* ]]; then
+                unset "clean_sources[url]"
+                if [ -z "$disable_dists" ]; then
+                    for suite in 1500 1600 1700 1800; do
+                        clean_sources+=( "https://apt.procurs.us/dists/iphoneos-arm64/$suite/main/binary-iphoneos-arm/" )
+                    done
+                fi
+            fi
+
+            if [[ "${clean_sources[url]}" == http*://apt.bingner.com* ]]; then
+                unset "clean_sources[url]"
+                if [ -z "$disable_dists" ]; then
+                    for suite in 478.23 550.58 800.00 1443.00; do
+                        clean_sources+=( "https://apt.bingner.com/dists/ios/$suite/main/binary-iphoneos-arm/" )
+                    done
+                fi
+            fi
+        fi
+    done
+    GetPackages "${clean_sources[@]}"
+fi
+
+mkdir -p "$dir/debs"
+for i in "${files[@]}"; do
+    if PackageIsAvailable "$i"; then
+        unset "pkgs[@]"
+        if [ -n "$no_recurse" ]; then
+            FetchDEB -o "$dir/debs/$i.deb" "$i" && pkgs+=( "$dir/debs/$i.deb" )
+        else
+            # RECURSE AND RESOLVE DEPENDENCIES
+            unset "array[@]"
+            unset "indexi[@]"
+            array=( "$i" )
+            while [[ -n "${array[*]}" ]]; do
+                for h in "${array[@]}"; do
+                    unset "dep_available"
+                    for x in "${debs[@]}"; do
+                        GetControl "$x"
+                        if [ "$h" == "$(echo "$control" | grep "Package:" | sed 's/^[^ ]* //')" ]; then
+                            Announce "A local version of $h was supplied. Not fetching."
+                            pkg="$x"
+                            dep_available=1
+                            break
+                        fi
+                    done
+
+                    if [ -z "$dep_available" ]; then
+                        pkg="$dir/debs/$h.deb"
+                        (FetchDEB -o "$pkg" "$h" && GetControl "$pkg") || (Announce "Couldn't find $pkg" && unset pkg)
+                    fi
+
+                    if [ -n "$pkg" ]; then
+                        pkgs+=( "$pkg" )
+                    fi
+                    split_array -d ", " array "$(echo "$control" | grep "Depends:" | sed 's/^[^ ]* //' | sed 's/([^()]*)//g')"
+
+                    k=0
+                    while [ -n "${array[k]}" ]; do
+                        if [ "${array[k]}" == "|" ]; then
+                            if [[ "${array[k-1]}" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|coreutils|firmware|cy+cpu.arm64|gsc.ipad) || "$(PackageIsAvailable "${array[k-1]}")" ]]; then
+                                until [[ "${array[k+2]}" != "|" ]]; do
+                                    indexi+=( "$((k++))" "$((k+2))" )
+                                    ((k+2))
+                                done
+                                indexi+=( "$((k++))" "$((k+2))" )
+                            else
+                                ((k++))
+                            fi
+                        else
+                            ((k++))
+                        fi
+                    done
+
+                    for n in "${indexi[@]}"; do
+                        unset "array[$n]"
+                    done
+
+                    for x in "${!array[@]}"; do
+                        if [[ "${array[x]}" == @(com.ex.substitute|org.coolstar.libhooker|mobilesubstrate|coreutils|firmware|cy+cpu.arm64|gsc.ipad) ]]; then
+                            unset "array[x]"
+                        fi
+                    done
+                done
+            done
+        fi
+
+        # EXTRACTING FETCHED DEBS
+        for deb in "${pkgs[@]}"; do
+            if [ -n "$custom_name" ]; then
+                name+="+$(basename "$deb")"
+            fi
+            ExtractDEB "$deb"
+        done
+    else
+        Announce "$i couldn't be found" 18
+    fi
+done 

@@ -1,0 +1,10 @@
+Name: Azule
+Package: com.alaise.azule
+Priority: optional
+Version: 0.7.4
+Architecture: iphoneos-arm
+Author: Alaise
+Maintainer: Alaise
+Depends: odcctools, bzip2, gzip, zstd, xz-utils, bash, jq, com.level3tjg.insert-dylib, plutil | com.bingner.plutil, ldid, coreutils, zip, unzip, sed, curl, me.alfhaily.opencli, com.linusyang.appinst
+Section: Utilities
+Description: A CLI tool that injects tweaks into jailed iOS apps

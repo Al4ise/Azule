@@ -1,7 +1,6 @@
 toolchain/
 .DS_Store
-iOS/
-.vscode
 Azule-iOS.deb
 lib/
 test
+.shellcheckrc

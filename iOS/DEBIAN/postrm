@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if [ "$1" = "remove" ]; then
+    rm -rf /usr/lib/Azule
+    exit 0
+fi
+
