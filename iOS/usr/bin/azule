@@ -169,7 +169,7 @@ help () {
     echo
     echo "Examples:"
 
-    if [ "$os" == "iOS" ]; then
+    if [ -n "$azule_decrypt" ] || [ -n "$unsafe_help" ]; then
         echo "  azule -n Foo -i com.example.foo -x appleid@example.com password123 -o ~/Foo/ -f com.alaise.example ~/Foo.bundle -a -m"
     fi
 
@@ -189,7 +189,7 @@ help () {
     echo "  -S                           Fakesigns iPA for use with AppSync"
     echo "  -e                           Removes App Extensions"
 
-    if [ -e "$azule/modules/azule_apt" ]; then
+    if [ -e "$azule/modules/azule_apt" ] || [ -n "$unsafe_help" ]; then
         echo
         echo "APT Module:"
         echo "  -A [Source URL/Repo List]    Specify custom sources to get packages from"
@@ -199,7 +199,7 @@ help () {
         echo "  -D                           Disable refreshing Procursus/Elcubratus repos"  
     fi
 
-    if [ -n "$azule_decrypt" ]; then
+    if [ -n "$azule_decrypt" ] || [ -n "$unsafe_help" ]; then
         echo
         echo "Decrypt Module:"
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
@@ -232,7 +232,7 @@ help () {
 
     echo "  -z                           Use Legacy Compression (outputs smaller .ipa files, but runs slower)"
     echo "  -h                           Print the help menu"
-    echo "  -H                           Print a more advanced help menu"
+    echo "  -H                           Print the complete help menu (incl. unsupported options)"
 
     if [ "$os" != "iOS" ]; then
         echo
@@ -360,7 +360,7 @@ trap "cleanup" EXIT
 while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFLklv args; do
 
     # STUFF WITH PARAMETERS
-    if [[ "$args" == @(x|n|b|p|i|o|c|f|A|z) ]]; then
+    if [[ "$args" == @(x|n|b|p|i|o|c|f|A|z|C) ]]; then
         tmp=( "$OPTARG" )
         until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
             tmp+=( "$(eval "echo \${$OPTIND}")" )
@@ -373,8 +373,6 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFLklv args; do
         if [[ "$args" == @(U|F) ]]; then
             Announce "-$args is not supported on your platform" 6
         fi
-    elif [[ "$args" == @(x|l|g|C) ]]; then
-        Announce "-$args is not supported on your platform" 6
     fi
 
     # MODULE SPECIFIC
@@ -382,7 +380,7 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFLklv args; do
         Announce "-$args requires the module azule_apt which is not installed" 34
     fi
 
-    if [ -n "$azule_decrypt" ] && [[ "$args" == @(x|C|y|g|k|l) ]]; then
+    if [ -z "$azule_decrypt" ] && [[ "$args" == @(x|C|y|g|k|l) ]]; then
         Announce "-$args requires the module azule_decrypt which is not installed" 34
     fi
 
