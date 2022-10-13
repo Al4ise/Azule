@@ -20,14 +20,6 @@ PackageIsAvailable() {
     fi
 }
 
-verlt() {
-    if [ "$1" = "$2" ]; then
-        return 1
-    else
-        [  "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ]
-    fi
-}
-
 FetchDEB() {
     unset fetched
     if [ "$1" == "-o" ]; then

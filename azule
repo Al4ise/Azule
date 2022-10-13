@@ -137,16 +137,16 @@ cleanup () {
 decompress () {
     if [ -z "$full_unzipped" ]; then
         if [ -z "$1" ] || [ "$2" != "-n" ]; then
-            unzip -qq -n "$ipadir" "$1" -d "$dir"
+            unzip -qq -n "$ipadir" "$1" -d "$dir/"
         else
-            unzip -qq -o "$ipadir" "$1" -d "$dir" 
+            unzip -qq -o "$ipadir" "$1" -d "$dir/" 
         fi
     fi
 }
 
 network_check(){
     if [ -z "$net" ]; then
-        if curl -I --connect-timeout 1 google.com &>/dev/null; then
+        if curl -I --connect-timeout 5 google.com &>/dev/null; then
             net=0
         else
             net=1
@@ -154,6 +154,14 @@ network_check(){
         export net
     fi
     return "$net"
+}
+
+verlt() {
+    if [ "$1" = "$2" ]; then
+        return 1
+    else
+        [  "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ]
+    fi
 }
 
 help () {
@@ -180,7 +188,6 @@ help () {
     echo "  -u                           Remove UISupportedDevices from app"
     echo "  -S                           Fakesigns iPA for use with AppSync"
     echo "  -e                           Removes App Extensions"
-    echo "  -y                           Don't remove watch app"
 
     if [ -e "$azule/modules/azule_apt" ]; then
         echo
@@ -192,7 +199,7 @@ help () {
         echo "  -D                           Disable refreshing Procursus/Elcubratus repos"  
     fi
 
-    if [ -e "$azule/modules/azule_decrypt" ]; then
+    if [ -n "$azule_decrypt" ]; then
         echo
         echo "Decrypt Module:"
         echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
@@ -204,6 +211,8 @@ help () {
     echo
     echo "Others:"
     echo "  -n [Name]                    Specify a name for the Output iPA"
+    echo "  -y                           Don't remove watch app"
+    echo "  -m                           Don't inect a hooking library"
 
     if [ "$os" == "Linux" ]; then
         echo "  -R                           Redownload the latest substrate, substitute, and toolchain"
@@ -331,6 +340,9 @@ case "$os" in
     iOS) 
         PATH="/usr/lib/Azule/bin:$PATH"
         azule="/usr/lib/Azule"
+        if [ -e "$azule/modules/azule_decrypt" ]; then
+            azule_decrypt=1
+        fi
     ;;
 
     Linux) 
@@ -345,7 +357,7 @@ trap "cleanup" SIGINT
 trap "cleanup" EXIT
 
 # CLI ARGUEMENTS
-while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgFLklv args; do
+while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFLklv args; do
 
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|n|b|p|i|o|c|f|A|z) ]]; then
@@ -370,7 +382,7 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgFLklv args; do
         Announce "-$args requires the module azule_apt which is not installed" 34
     fi
 
-    if [ ! -e "$azule/modules/azule_decrypt" ] && [[ "$args" == @(x|C|y|g|k|l) ]]; then
+    if [ -n "$azule_decrypt" ] && [[ "$args" == @(x|C|y|g|k|l) ]]; then
         Announce "-$args requires the module azule_decrypt which is not installed" 34
     fi
 
@@ -381,7 +393,7 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgFLklv args; do
         b) bundle="${tmp[*]}" && run=1 ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) split_array files "${tmp[*]}" && run=1 ;;
-        i) ipadir="$(expand "${tmp[*]}")" ;;
+        i) ipadir="$(expand "${tmp[*]}")" && if [ -n "$azule_decrypt" ] && [[ "$ipadir" != @(*.app|*.ipa ) ]]; then run=1; fi;;
         n) name="${tmp[*]}" ;;
         o) outdir="$(expand "${tmp[*]}")" ;;
         p) displayname="${tmp[*]}" && run=1 ;;
@@ -389,8 +401,10 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgFLklv args; do
         C) country_code="${tmp[*]}" ;;
 
         # SWITCHES
+        d) no_recurse=1 ;;
         e) remove_extensions=1 && run=1 ;;
         j) allow_root_run=1 ;;
+        m) no_inject_hl=1 ;;
         q) ignore_errors=1 ;;
         r) ignore_encrypted=1 ;;
         s) silent_run=1 ;;
@@ -400,7 +414,6 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgFLklv args; do
         y) no_remove_watchapp=1 ;;
         w) weak=1 ;;
         L) ignore_canister=1 ;;
-        d) no_recurse=1 ;;
         D) disable_dists=1 ;;
         z) legacy_compression=1 ;;
 
@@ -521,7 +534,7 @@ if [ -z "$outdir" ]; then
     Announce "No Output Directory Specified. Run 'azule -h' for help" 27
 elif [ -z "$ipadir" ]; then
     Announce "No iPA Specified. Run 'azule -h' for help" 27
-elif [[ -z "$run" ]]; then
+elif [ -z "$run" ]; then
     Announce "No Modifiers Specified. Run 'azule -h' for help" 27
 fi
 
@@ -550,12 +563,11 @@ if [ -e "$ipadir" ]; then
         full_unzipped=1
     fi
 else
-    ###
-    if [ "$os" == "iOS" ] && [ -e "$azule/modules/azule_decrypt" ]; then
+    if [ -n "$azule_decrypt" ]; then
         source "$azule"/modules/azule_decrypt
     fi
 
-    if [ ! -e "$ipadir" ]; then
+    if [ ! -e Payload ]; then
         Announce "Invalid App" 8
     fi
 fi
@@ -729,18 +741,26 @@ if [ -n "${files[*]}" ]; then
         fi
     done < <(find "$dir/Tweak" "$dir/Custom" ! -type l -iname '*.framework' ! -path '*PreferenceBundles/*' ! -path '*.framework/*' 2>/dev/null)
 
-    # MERGING APPLICATION SUPPORT
-    while read -r i; do
-        mv "$i" "Payload/$appname/"
-        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-    done < <(find "$dir/Tweak/Library/Application Support" -mindepth 2 -maxdepth 2 ! -type l ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
-
     # MOVING BUNDLES
     while read -r i; do
         rm -rf "Payload/$appname/$(basename "$i")"
         mv "$i" "Payload/$appname/"
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
-    done < <(find "$dir/Tweak/Library/Application Support" ! -type l -iname '*.bundle' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
+    done < <(find "$dir/Tweak/Library/Application Support" ! -type l -iname '*.bundle' ! -path '*.appex/*' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
+
+    # MERGING APPLICATION SUPPORT
+    while read -r i; do
+        rm -rf "Payload/$appname/$(basename "$i")"
+        mv "$i" "Payload/$appname/"
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+    done < <(find "$dir/Tweak/Library/Application Support" -mindepth 2 -maxdepth 2 ! -type l ! -path '*.appex/*' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
+
+    # MOVING EXTENSIONS
+    while read -r i; do
+        rm -rf "Payload/$appname/PlugIns/$(basename "$i")"
+        mv "$i" "Payload/$appname/PlugIns/"
+        Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
+    done < <(find "$dir/Tweak" "$dir/Custom" ! -type l -iname '*.appex' ! -path '*.appex/*' ! -path '*.bundle/*' ! -path '*.framework/*' 2>/dev/null)
 
     # FIXING LINKS
     for i in "${inject[@]}"; do
@@ -777,7 +797,7 @@ if [ -n "${files[*]}" ]; then
     fi
 
     # INJECT HOOKING LIBRARY
-    if [ -n "${inject[*]}" ]; then
+    if [ -n "${inject[*]}" ] && [ -z "$no_inject_hl" ]; then
         for hookinglibrary in "CydiaSubstrate.framework/CydiaSubstrate" "libsubstitute.dylib"; do
             hl="$hookinglibrary"
             if [[ "$hl" =~ .framework ]]; then
@@ -929,6 +949,22 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
         status="$?"
     fi
     Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25 -X
+
+    # REMOVING WATCH APP
+    if [ -z "$no_remove_watchapp" ]; then
+        decompress "*Info.plist*" -n
+        while read -r i; do
+            DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
+            if [ "$DTPlatformName" == "watchos" ]; then
+                if [ -d "$(dirname "$i")" ]; then
+                    zip -qq -d "$outdir" "$(dirname "$i")/*" &>/dev/null
+                    stat="$?"
+                    if [ "$stat" != "12" ]; then status=$(( status + "$stat" )); fi
+                fi
+            fi
+        done < <(find "$dir/Payload" -name "Info.plist")
+        Verbose "Removed Watch App" "Couldn't Remove Watch App" -x -v
+    fi
 
     # REMOVING EXTENSIONS
     if [ -n "$remove_extensions" ]; then
