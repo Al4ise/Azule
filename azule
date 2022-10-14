@@ -212,7 +212,7 @@ help () {
     echo "Others:"
     echo "  -n [Name]                    Specify a name for the Output iPA"
     echo "  -y                           Don't remove watch app"
-    echo "  -m                           Don't inect a hooking library"
+    echo "  -m                           Don't inject a hooking library"
 
     if [ "$os" == "Linux" ]; then
         echo "  -R                           Redownload the latest substrate, substitute, and toolchain"
