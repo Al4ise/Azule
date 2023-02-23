@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# REMOVING UISUPPORTEDDEVICES
+if [ -n "$remove_uisd" ]; then
+    UISupportedDevices="$(ExtractPlistValue UISupportedDevices Payload/"$appname"/Info.plist)"
+    if [ -n "$UISupportedDevices" ]; then
+        RemovePlistKey UISupportedDevices Payload/"$appname"/Info.plist
+        Verbose "Removed UISupportedDevices from app" "Couldn't remove UISupportedDevices from app"
+    fi
+fi
+
+# CHANGING BUNDLEID
+if [ -n "$bundle" ]; then
+    orig_bundleid="$(ExtractPlistValue CFBundleIdentifier Payload/"$appname"/Info.plist)"
+    checkvar "$orig_bundleid"
+    Verbose "Obtained Original BundleID" "Couldn't Obtain Original BundleID"
+
+    decompress "*Info.plist*" -n
+
+    while read -r i; do
+        CFBundleIdentifier="$(ExtractPlistValue CFBundleIdentifier "$i")"
+        if [[ "$CFBundleIdentifier" =~ $orig_bundleid ]]; then
+            CFBundleIdentifier="${CFBundleIdentifier//$orig_bundleid/$bundle}"
+            ReplacePlistValue "$CFBundleIdentifier" CFBundleIdentifier "$i"
+            status=$(( status + $? ))
+        fi
+    done < <(find Payload/"$appname" -name "Info.plist")
+    Verbose "Changed App BundleID to $bundle" "Couldn't Change App BundleID" -x
+fi
+
+# CHANGING DISPLAY NAME
+if [ -n "$displayname" ]; then
+    ReplacePlistValue "$displayname" CFBundleDisplayName Payload/"$appname"/Info.plist
+    Verbose "Changed App Display Name to $displayname" "Couldn't Change App Display Name"
+fi
+
+# CHANGING VERSION
+if [ -n "$custom_version" ]; then
+    ReplacePlistValue "$custom_version" CFBundleVersion Payload/"$appname"/Info.plist
+    ReplacePlistValue "$custom_version" CFBundleShortVersionString Payload/"$appname"/Info.plist
+    Verbose "Changed App Version to $custom_version" "Couldn't Change App Version"
+fi

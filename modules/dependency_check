@@ -1,0 +1,23 @@
+#!/bin/bash
+tool_names=( "plistutil" "xmlstarlet" "xmllint" "jq" "curl" "git" "zip" "unzip" "xz" "zstd" "gzip" "bzip2" )
+for i in "${tool_names[@]}"; do
+    if ! which "$i" &>/dev/null; then
+        pkg_names+=( "$i" )
+    fi
+done
+
+for i in "${pkg_names[@]}"; do
+    case "$i" in 
+        plistutil) b=libplist-utils ;;
+        xmllint) b=libxml2-utils ;;
+        xz) b=xz-utils ;;
+        *) b="$i" ;;
+    esac
+    Announce "$i is required but not installed. Its package name on Debian is $b." 
+    install+=( "$b" )
+done
+
+if [ -n "${pkg_names[0]}" ]; then
+    Announce "If you are on Debian, run the following command to proceed: sudo apt install ${install[*]} -y"
+    exit 1;
+fi
