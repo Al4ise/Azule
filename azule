@@ -64,7 +64,9 @@ expand () {
     cd "$rootdir" || exit
     process_var="$(echo "$1" | xargs)"
 
-    if [ -f "$process_var" ]; then
+    if [[ "$process_var" == /* ]]; then
+        echo "$process_var"
+    elif [ -f "$process_var" ]; then
         echo "$(cd "$(dirname "$process_var")" && pwd)/$(basename "$process_var")"
     elif [ -d "$process_var" ]; then
         cd "$process_var" && pwd
@@ -435,8 +437,9 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFZLklv args; do
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|n|b|p|i|o|c|f|A|z|C) ]]; then
         tmp=( "$OPTARG" )
-        until [[ $(eval "echo \${$OPTIND}") =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
-            tmp+=( "$(eval "echo \${$OPTIND}")" )
+        ttmp="$(eval "echo \${$OPTIND}")"
+        until [[ "$ttmp" =~ ^-.* ]] || [ -z "$ttmp" ]; do
+            tmp+=( "$ttmp" )
             OPTIND=$((OPTIND + 1))
         done
     fi
@@ -446,6 +449,8 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFZLklv args; do
         if [[ "$args" == @(U|F) ]]; then
             Announce "-$args is not supported on your platform" 6
         fi
+    elif [[ "$args" == @(x|C|y|g|k|l) ]]; then
+        Announce "-$args is not supported on your platform" 6
     fi
 
     case "$args" in
@@ -509,7 +514,7 @@ if [ -n "$no_update_azule" ]; then
 fi
 
 # INTEGRITY CHECKS, AND UPDATE CHECKS
-if [ ! -e "$azule/lib" ] || [ ! "$(ls -A "$azule/toolchain")" ] || [ -z "$no_update_azule" ]; then
+if [ ! -e "$azule/lib" ] || [ ! "$(ls -A "$azule/toolchain" &>/dev/null)" ] || [ -z "$no_update_azule" ]; then
     if network_check; then 
         cd "$azule" || exit
         if [[ "$os" == @(MacOS|Linux_x86|Linux_ARM) ]]; then
