@@ -158,7 +158,7 @@ network_check(){
         fi
         export net
     fi
-    return "$net"
+    return $net
 }
 
 verlt() {
@@ -340,6 +340,10 @@ case "$os" in
                 return 1
             fi
         }
+
+        convert_to_plist () {
+            plutil -convert binary1 "$1"
+        }
     ;;
 
     Linux_ARM|Linux_x86)
@@ -380,6 +384,30 @@ case "$os" in
                 return 1
             fi   
         }
+
+    convert_to_plist() {
+        local input_file="$1"
+        local xml_output="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        xml_output+="<plist version=\"1.0\">\n"
+        xml_output+="<dict>\n"
+
+        while IFS="=" read -r key value; do
+            if [[ -n "$key" && -n "$value" ]]; then
+                key="$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+                value="$(echo "$value" | sed 's/^ *"\{0,1\}//;s/"\{0,1\} *$//')"
+                xml_output+="  <key>$key</key>\n"
+                xml_output+="  <string>$value</string>\n"
+            fi
+        done < "$input_file"
+
+        xml_output+="</dict>\n"
+        xml_output+="</plist>\n"
+
+        local tmp_plist="$(mktemp)"
+        printf "%b" "$xml_output" > "$tmp_plist"
+        plistutil -i "$tmp_plist" -o "$input_file" -f binary
+        rm "$tmp_plist"
+    }
     ;;
 esac
 
@@ -398,6 +426,7 @@ if [[ "$os" == @(Linux_ARM|Linux_x86|MacOS) ]]; then
         rm -rf "$dir/debtemp/$1"
         return $status
     }
+
 
 else
 
@@ -437,9 +466,8 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFZLklv args; do
     # STUFF WITH PARAMETERS
     if [[ "$args" == @(x|n|b|p|i|o|c|f|A|z|C) ]]; then
         tmp=( "$OPTARG" )
-        ttmp="$(eval "echo \${$OPTIND}")"
-        until [[ "$ttmp" =~ ^-.* ]] || [ -z "$ttmp" ]; do
-            tmp+=( "$ttmp" )
+        until [[ "$(eval "echo \${$OPTIND}")" =~ ^-.* ]] || [ -z "$(eval "echo \${$OPTIND}")" ]; do
+            tmp+=( "$(eval "echo \${$OPTIND}")" )
             OPTIND=$((OPTIND + 1))
         done
     fi
@@ -547,7 +575,7 @@ if [ ! -e "$azule/lib" ] || [ ! "$(ls -A "$azule/toolchain" &>/dev/null)" ] || [
         elif [[ "$os" == @(Linux_x86|Linux_ARM) ]]; then
             source "$azule/modules/dependency_check"
             if [ "$os" == "Linux_x86" ]; then
-                toolchain_url=https://github.com/kabiroberai/darwin-tools-linux/releases/download/v2.2.1/darwin-tools-ubuntu20.04.tar.gz
+                toolchain_url=https://github.com/kabiroberai/darwin-tools-linux/releases/download/v2.2.1/darwin-tools-ubuntu18.04.tar.gz
             else
                 toolchain_url=https://github.com/kabiroberai/darwin-tools-linux/releases/download/v2.2.1/darwin-tools-ubuntu20.04-aarch64.tar.gz
             fi
@@ -580,6 +608,7 @@ if [ ! -e "$azule/lib" ] || [ ! "$(ls -A "$azule/toolchain" &>/dev/null)" ] || [
             mv "$TMP"/libsubstrate.dylib CydiaSubstrate.framework/CydiaSubstrate
             mv substrate.h CydiaSubstrate.framework/Headers/CydiaSubstrate.h
             mv CydiaSubstrate.framework "$azule"/lib/CydiaSubstrate.framework
+            convert_to_plist "$azule"/lib/CydiaSubstrate.framework/Info.plist
             cd "$azule" || exit
             rm -rf "$TMP"
             Announce "Downloaded CydiaSubstrate.framework"
