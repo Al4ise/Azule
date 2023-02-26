@@ -672,7 +672,11 @@ if [ -n "${files[*]}" ]; then
         unset "indexes[@]"
         while [[ "$x" -le "$max" ]]; do
             indexes+=( "$x" )
-            string+=" ${files[x]}"
+            if [ -n "$string" ]; then
+                string+=" ${files[x]}"
+            else
+                string+="${files[x]}"
+            fi
 
             if [ -e "$string" ]; then
                 e_string="$(cd "$rootdir" && realpath "$string")"
