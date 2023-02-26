@@ -55,31 +55,6 @@ Verbose () {
     fi
 }
 
-expand () {
-    if ! [[ "$1" ]]; then
-        return 0
-    fi
-
-    current_dir="$PWD"
-    cd "$rootdir" || exit
-    process_var="$(echo "$1" | xargs)"
-
-    if [[ "$process_var" == /* ]]; then
-        echo "$process_var"
-    elif [ -f "$process_var" ]; then
-        echo "$(cd "$(dirname "$process_var")" && pwd)/$(basename "$process_var")"
-    elif [ -d "$process_var" ]; then
-        cd "$process_var" && pwd
-    elif [[ "$process_var" == ?*/* ]] && [ -d "$(dirname "$process_var")" ]; then
-        echo "$(cd "$(dirname "$process_var")" && pwd)"/"${process_var##*/}"
-    elif [ -z "$2" ]; then
-        echo "$process_var"
-    else
-        echo "$rootdir/$process_var"
-    fi
-    cd "$current_dir" || exit
-}
-
 lib_basename () {
     if [[ "$1" == *.framework/* ]]; then
         echo "$(basename "$(dirname "$1")")/$(basename "$1")"
@@ -115,17 +90,6 @@ split_array () {
     shift
     IFS="$delim" read -ra "${newarr?}" <<< "$*"
     export "${newarr?}"
-}
-
-resolve_symlink () {
-    sym="$(expand "$1")" 
-    if [ ! -h "$sym" ]; then
-        echo "$sym"
-    else
-        link="$(expr "$(command ls -ld -- "$sym")" : '.*-> \(.*\)$')"
-        cd "$(dirname "$sym")" || exit
-        resolve_symlink "$link" | sed "s|^\([^/].*\)\$|$(dirname "$sym")/\1|"
-    fi
 }
 
 cleanup () {
@@ -270,25 +234,6 @@ case "$(uname -s)" in
     ;;
 esac
 
-# PLATFORM-SPECIFIC VARIABLES
-case "$os" in
-    MacOS)     
-        azule="$(dirname "$(resolve_symlink "$0")")"
-        PATH="$azule/bin/darwin:$PATH" 
-    ;;
-
-    iOS) 
-        PATH="/usr/lib/Azule/bin:$PATH"
-        azule="/usr/lib/Azule"
-    ;;
-
-    Linux_x86|Linux_ARM) 
-        azule="$(dirname "$(resolve_symlink "$0")")"
-        PATH="$azule/bin/linux:$PATH"
-        PATH="$azule/toolchain/bin:$PATH" 
-    ;;
-esac
-
 # PLIST MANAGEMENT
 case "$os" in
     iOS)
@@ -427,7 +372,6 @@ if [[ "$os" == @(Linux_ARM|Linux_x86|MacOS) ]]; then
         return $status
     }
 
-
 else
 
     ExtractDEB () {
@@ -440,7 +384,7 @@ fi
 # PLATFORM-SPECIFIC VARIABLES
 case "$os" in
     MacOS)     
-        azule="$(dirname "$(resolve_symlink "$0")")"
+        azule="$(dirname "$(realpath "$0")")"
         PATH="$azule/bin/darwin:$PATH" 
     ;;
 
@@ -449,8 +393,8 @@ case "$os" in
         azule="/usr/lib/Azule"
     ;;
 
-    Linux_ARM|Linux_x86) 
-        azule="$(dirname "$(resolve_symlink "$0")")"
+    Linux_x86|Linux_ARM) 
+        azule="$(dirname "$(realpath "$0")")"
         PATH="$azule/bin/linux:$PATH"
         PATH="$azule/toolchain/bin:$PATH" 
     ;;
@@ -488,9 +432,9 @@ while getopts n:i:o:c:b:x:f:p:C:huSewsrDHqAdjRyUzgmFZLklv args; do
         b) bundle="${tmp[*]}" && run=1 ;;
         c) custom_version="${tmp[*]}" && run=1 ;;
         f) split_array files "${tmp[*]}" && run=1 ;;
-        i) ipadir="$(expand "${tmp[*]}")" && if [ "$os" == "iOS" ] && [[ "$ipadir" != @(*.app|*.ipa ) ]]; then run=1; fi;;
+        i) ipadir="$(realpath -q "${tmp[*]}")" && [[ -z "$ipadir" && "$os" == "iOS" ]] && ipadir="${tmp[*]}" && run=1 ;;
         n) name="${tmp[*]}" ;;
-        o) outdir="$(expand "${tmp[*]}")" ;;
+        o) outdir="$(realpath -q "${tmp[*]}")" && [[ -z "$outdir" && "${tmp[*]}" != /* ]] && outdir="$(pwd)/${tmp[*]}" ;;
         p) displayname="${tmp[*]}" && run=1 ;;
         x) IPATOOL_EMAIL="${tmp[0]}" && unset "tmp[0]" && IPATOOL_PASSWORD="${tmp[*]}" ;;
         C) country_code="${tmp[*]}" ;;
@@ -557,7 +501,7 @@ if [ ! -e "$azule/lib" ] || [ ! "$(ls -A "$azule/toolchain" &>/dev/null)" ] || [
                     Announce "Updating Azule..." -v
                     git pull -q
                     Verbose "Updated Azule" "Couldn't Update Azule" 29
-                    exec "$(resolve_symlink "$0")" -U "$@"
+                    exec "$(realpath "$0")" -U "$@"
                 else
                     Announce "Azule is Up to Date" -v
                 fi
@@ -729,8 +673,14 @@ if [ -n "${files[*]}" ]; then
         while [[ "$x" -le "$max" ]]; do
             indexes+=( "$x" )
             string+=" ${files[x]}"
-            e_string="$(expand "$string")"
-            if [ -e "$e_string" ] && [[ -z "${files[x+1]}" || ! -e "$(expand "$string ${files[x+1]}")" ]]; then
+
+            if [ -e "$string" ]; then
+                e_string="$(cd "$rootdir" && realpath "$string")"
+            else
+                e_string="$string"
+            fi
+
+            if [ -e "$e_string" ] && [[ -z "${files[x+1]}" || ! -e "$e_string ${files[x+1]}" ]]; then
 
                 Announce "$(basename "$string" | xargs) will be imported" -v
 
@@ -1004,9 +954,8 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
     fi
 
     # CREATING OUTPUT DIRECTORY
-    outdir="$(expand "$outdir" -g)"
     mkdir -p "$(dirname "$outdir")"
-    if [ -e "$outdir" ]; then rm -rf "$outdir"; fi
+    if [[ -e "$outdir" && "$outdir" == @(*.ipa|*.ipa) ]]; then rm -rf "$outdir"; fi
     Announce "Generating iPA..."
         
     if [ -n "$full_unzipped" ]; then

@@ -122,7 +122,7 @@ while read -r i; do
 
             # CHOOSING FOULDECRYPT BINARY
             ios_version="$(sw_vers -productVersion)"
-            if [[ "${ios_version%.*}" -lt "14" ]] || [[ ! -e "/.installed_taurine" && ! -e "/.installed_unc0ver" ]]; then
+            if [[ "${ios_version%.*}" -lt 14 ]] || [[ ! -e "/.installed_taurine" && ! -e "/.installed_unc0ver" ]]; then
                 decrypt="fouldecrypt.tfp0"
             elif [ -e "/.installed_taurine" ]; then
                 decrypt="fouldecrypt.kernrw"
