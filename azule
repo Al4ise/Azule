@@ -545,7 +545,7 @@ if [ ! -e "$azule/lib" ] || [ ! "$(ls -A "$azule/toolchain" &>/dev/null)" ] || [
             Announce "Downloading CydiaSubstrate.framework..."
             TMP=$(mktemp -d)
             cd "$TMP" || exit
-            curl -Lk https://apt.bingner.com/debs/1443.00/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
+            curl -Lk https://raw.githubusercontent.com/Al4ise/Azule/files/mobilesubstrate_0.9.7113_iphoneos-arm.deb -o substrate.deb
             ar -x "substrate.deb"
             tar --lzma --strip-components 3 -xf data.tar.lzma "./Library/Frameworks/CydiaSubstrate.framework" "./usr/lib" "./usr/include"
             rm CydiaSubstrate.framework/CydiaSubstrate CydiaSubstrate.framework/Headers/CydiaSubstrate.h
@@ -568,7 +568,7 @@ if [ ! -e "$azule/lib" ] || [ ! "$(ls -A "$azule/toolchain" &>/dev/null)" ] || [
         cd "$TMP" || exit 
             cd "$TMP" || exit 
             Announce "Downloading Substitute..."
-            curl -k https://apt.bingner.com/debs/1443.00/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
+            curl -k https://raw.githubusercontent.com/Al4ise/Azule/files/com.ex.substitute_2.2.3_iphoneos-arm.deb -o substitute.deb
             ar -x "substitute.deb"
             tar --lzma --strip-components 2 -xf data.tar.lzma "usr/lib"
             mv libsubstitute.dylib "$azule/lib/libsubstitute.dylib"
