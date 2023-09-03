@@ -987,8 +987,9 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
         while read -r i; do
             DTPlatformName="$(ExtractPlistValue DTPlatformName "$i")"
             if [ "$DTPlatformName" == "watchos" ]; then
-                if [ -d "$(dirname "$i")" ]; then
-                    zip -qq -d "$outdir" "$(dirname "$i")/*" &>/dev/null
+                absdir=$(dirname "$i")
+                if [ -d "$absdir" ]; then
+                    zip -qq -d "$outdir" "Payload${absolutedir#*Payload*}/*" &>/dev/null
                     stat="$?"
                     if [ "$stat" != "12" ]; then status=$(( status + "$stat" )); fi
                 fi
