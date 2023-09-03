@@ -989,7 +989,7 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
             if [ "$DTPlatformName" == "watchos" ]; then
                 absdir=$(dirname "$i")
                 if [ -d "$absdir" ]; then
-                    zip -qq -d "$outdir" "Payload${absolutedir#*Payload*}/*" &>/dev/null
+                    zip -qq -d "$outdir" "Payload${absdir#*Payload*}/*" &>/dev/null
                     stat="$?"
                     if [ "$stat" != "12" ]; then status=$(( status + "$stat" )); fi
                 fi
