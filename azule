@@ -643,7 +643,7 @@ if [ -n "$run" ]; then
     decompress "$executable"
     checkvar "$exec_name"
     Verbose "App executable is ${executable//*.app/@executable_path}" "Couldn't set app executable" 12 -v
-    ldid -e "$executable" > "$dir/exec_entitlements"
+    ldid -e "$executable" > "$dir/exec_entitlements" || rm -f "$dir/exec_entitlements"
     ldid -r "$executable" || status=1
     Verbose "Stripped codesign from app executable" "Couldn't strip codesign from app executable" 33 -v
     rpath="$(otool -l "$executable" | grep RPATH -A2 | sed 's/.*path \(.*\)/\1/' | grep -o '^\S*' | grep "^@executable_path*" | tail -1 | sed "s|@executable_path|Payload/$appname|g")"
@@ -933,7 +933,7 @@ if [ -n "$fakesign" ]; then
 fi
 
 # RESTORING ENTITLEMENTS
-if [ -n "$run" ]; then
+if [ -n "$run" ] && [ -f "$dir/exec_entitlements" ]; then
     ldid -S"$dir/exec_entitlements" "$executable"
     Verbose "Restored App Entitlements" "Couldn't Restore App Entitlements" -v
 fi
