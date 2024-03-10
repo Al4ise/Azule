@@ -818,6 +818,7 @@ if [ -n "${files[*]}" ]; then
 
     # MOVING EXTENSIONS
     while read -r i; do
+        mkdir -p "Payload/$appname/PlugIns"
         rm -rf "Payload/$appname/PlugIns/$(basename "$i")"
         mv "$i" "Payload/$appname/PlugIns/"
         Verbose "Copied $(basename "$i") to app directory" "$(basename "$i") couldn't be copied to app directory" 16 -v
