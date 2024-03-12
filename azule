@@ -155,7 +155,7 @@ help () {
     echo "  -b [BundleId]                Set custom BundleID for output ipa"
     echo "  -p [Name]                    Set custom Display Name for output ipa"
     echo "  -u                           Remove UISupportedDevices from app"
-    echo "  -S                           Fakesigns iPA for use with AppSync"
+    echo "  -S                           Fakesigns IPA for use with AppSync"
     echo "  -e                           Removes App Extensions"
 
     if [ "$os" == "iOS" ] || [ -n "$unsafe_help" ]; then
@@ -171,7 +171,7 @@ help () {
     if [ "$os" == "iOS" ] || [ -n "$unsafe_help" ]; then
         echo
         echo "Decrypt Module:"
-        echo "  -x [Apple ID] [Password]     Fetch and decrypt iPA with specified Apple ID"
+        echo "  -x [Apple ID] [Password]     Fetch and decrypt IPA with specified Apple ID"
         echo "  -C [Country Code]            Specify country code for ipatool"
         echo "  -g                           Force Update Apps"
         echo "  -l                           Don't Update Outdated Apps"
@@ -179,7 +179,7 @@ help () {
 
     echo
     echo "Others:"
-    echo "  -n [Name]                    Specify a name for the Output iPA"
+    echo "  -n [Name]                    Specify a name for the Output IPA"
     echo "  -y                           Don't remove watch app"
     echo "  -m                           Don't inject a hooking library"
 
@@ -583,7 +583,7 @@ fi
 if [ -z "$outdir" ]; then
     Announce "No Output Directory Specified. Run 'azule -h' for help" 27
 elif [ -z "$ipadir" ]; then
-    Announce "No iPA Specified. Run 'azule -h' for help" 27
+    Announce "No IPA Specified. Run 'azule -h' for help" 27
 elif [ -z "$run" ]; then
     Announce "No Modifiers Specified. Run 'azule -h' for help" 27
 fi
@@ -607,10 +607,16 @@ if [ -e "$ipadir" ]; then
     elif [ "${ipadir: -4}" == ".ipa" ] && [ -n "$legacy_compression" ]; then
 
         # EXTRACTING IPA
-        Announce "Extracting iPA..."
+        Announce "Extracting IPA..."
         unzip -q "$ipadir" -d "$dir"
         Verbose "IPA extracted" "Couldn't extract IPA" 11
         full_unzipped=1
+    fi
+
+    # REMOVING EXTENSIONS
+    if [ -n "$full_unzipped" ] && [ -n "$remove_extensions" ]; then
+        rm -rf $dir/Payload/*.app/PlugIns
+        Verbose "Removed Extensions" "Couldn't Remove Extensions" -x
     fi
 else
     if [ "$os" == "iOS" ]; then
@@ -922,7 +928,7 @@ source "$azule/modules/plist_editing"
 # FAKESIGNING
 if [ -n "$fakesign" ]; then
     decompress "*.framework/" "*.dylib"
-    Announce "Fakesigning iPA..."
+    Announce "Fakesigning IPA..."
         while read -r i; do
             ldid -S -M "$i" &>/dev/null
             status="$?"
@@ -961,8 +967,7 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
     # CREATING OUTPUT DIRECTORY
     mkdir -p "$(dirname "$outdir")"
     if [[ -e "$outdir" && "$outdir" == @(*.ipa|*.ipa) ]]; then rm -rf "$outdir"; fi
-    Announce "Generating iPA..."
-        
+
     if [ -n "$full_unzipped" ]; then
         if [ -n "$output_unzipped" ]; then
             mv "Payload/$appname" "$outdir"
@@ -971,7 +976,16 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
             status="$?"
         fi
     else
+        Announce "Generating IPA..."
         cp "$ipadir" "$outdir"
+
+        # REMOVING EXTENSIONS
+        if [ -n "$remove_extensions" ]; then
+            zip -qq -d "$outdir" "Payload/*.app/PlugIns/*" &>/dev/null
+            stat="$?"
+            if [ "$stat" != "12" ]; then status="$stat"; fi
+            Verbose "Removed Extensions" "Couldn't Remove Extensions" -x
+        fi
 
         while read -r k; do
             ziparr+=( "$k" )
@@ -980,7 +994,6 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
         zip -qq -u "$outdir" "${ziparr[@]}"
         status="$?"
     fi
-    Verbose "Generated IPA at $outdir" "Couldn't generate IPA" 25 -X
 
     # REMOVING WATCH APP
     if [ -z "$no_remove_watchapp" ]; then
@@ -999,11 +1012,5 @@ if [ -n "$run" ] || [ -n "$foul_plist" ]; then
         Verbose "Removed Watch App" "Couldn't Remove Watch App" -x -v
     fi
 
-    # REMOVING EXTENSIONS
-    if [ -n "$remove_extensions" ]; then
-        zip -qq -d "$outdir" "Payload/*.app/PlugIns/*" &>/dev/null
-        stat="$?"
-        if [ "$stat" != "12" ]; then status="$stat"; fi
-        Verbose "Removed Extensions" "Couldn't Remove Extensions" -x
-    fi
+    Verbose "Generated output at $outdir" "Couldn't generate output" 25 -X
 fi
